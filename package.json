@@ -1,0 +1,26 @@
+{
+  "name": "toot-raft",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "sounds": "node scripts/fart-preview.js",
+    "test:sim": "node scripts/sim-check.js && node scripts/autopilot.js",
+    "start": "node server/main.js",
+    "test:net": "node scripts/net-test.js"
+  },
+  "dependencies": {
+    "@dimforge/rapier2d-compat": "0.21.0",
+    "three": "0.186.1",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.5"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

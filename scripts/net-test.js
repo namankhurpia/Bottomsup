@@ -1,0 +1,145 @@
+// End-to-end multiplayer test: a real server, 4 WebSocket clients, physics sped up 10x.
+// Covers rooms, the 4-player start rule, host-only actions, disconnect-while-farting,
+// rejoin, a full race driven by the autopilot over the network, score saving, the
+// leaderboard API and room cleanup.
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import WebSocket from 'ws';
+import { startServer } from '../server/index.js';
+import { createPilot } from './pilot.js';
+
+const dataDir = mkdtempSync(join(tmpdir(), 'toot-test-'));
+const server = await startServer({ port: 0, dataDir, staticDir: './dist', simSpeed: 10, roomTtlMs: 600, seatGraceMs: 400, log: () => {} });
+const url = `ws://127.0.0.1:${server.port}/ws`;
+
+let failures = 0;
+const check = (cond, msg) => {
+  console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`);
+  if (!cond) failures++;
+};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function client(label) {
+  const ws = new WebSocket(url);
+  const c = { label, ws, inbox: [], room: null, snap: null, seat: null, token: null, code: null };
+  ws.on('message', (d) => {
+    const m = JSON.parse(d);
+    if (m.t === 'room') c.room = m.room;
+    if (m.t === 'snap') c.snap = m;
+    if (m.t === 'welcome') Object.assign(c, { seat: m.seat, token: m.token, code: m.code });
+    c.inbox.push(m);
+    c.onSnap && m.t === 'snap' && c.onSnap(m);
+  });
+  c.send = (m) => ws.send(JSON.stringify(m));
+  c.open = new Promise((r) => ws.on('open', r));
+  c.waitFor = async (pred, ms = 5000, what = 'message') => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      const hit = c.inbox.find(pred);
+      if (hit) {
+        c.inbox.splice(c.inbox.indexOf(hit), 1);
+        return hit;
+      }
+      await sleep(5);
+    }
+    throw new Error(`${label}: timed out waiting for ${what}`);
+  };
+  c.close = () => new Promise((r) => (ws.on('close', r), ws.close()));
+  return c;
+}
+
+try {
+  const [a, b, c, d, e] = ['A', 'B', 'C', 'D', 'E'].map(client);
+  await Promise.all([a, b, c, d, e].map((x) => x.open));
+
+  e.send({ t: 'create', name: '   ' });
+  check((await e.waitFor((m) => m.t === 'error')).code === 'bad-name', 'blank name is rejected');
+  e.send({ t: 'join', name: 'Eve', code: '0000' });
+  check((await e.waitFor((m) => m.t === 'error')).code === 'room-not-found', 'unknown room code is rejected');
+
+  a.send({ t: 'create', name: '<b>Ann</b>' });
+  await a.waitFor((m) => m.t === 'welcome');
+  check(/^\d{4}$/.test(a.code) && a.seat === 0, `room created with 4-digit code ${a.code}, creator in seat 1`);
+  check(a.room.seats[0].name === 'bAnn/b', 'angle brackets are stripped from names');
+
+  for (const [x, name] of [[b, 'Bob'], [c, 'Cat']]) {
+    x.send({ t: 'join', name, code: a.code });
+    await x.waitFor((m) => m.t === 'welcome');
+  }
+  a.send({ t: 'start' });
+  check((await a.waitFor((m) => m.t === 'error')).code === 'need-4', 'host cannot start with 3 players');
+
+  d.send({ t: 'join', name: 'Dan', code: a.code });
+  await d.waitFor((m) => m.t === 'welcome');
+  check(d.seat === 3, 'fourth player gets seat 4');
+  e.send({ t: 'join', name: 'Eve', code: a.code });
+  check((await e.waitFor((m) => m.t === 'error')).code === 'room-full', 'fifth player is turned away');
+
+  // a tab that goes quiet mid-fart (backgrounded, phone switched apps) must stop farting
+  c.send({ t: 'input', fart: true, move: 0, aim: 0 });
+  await a.waitFor((m) => m.t === 'snap' && m.s.players[2].farting, 3000, 'C farting');
+  await sleep(1000);
+  a.inbox.length = 0;
+  await a.waitFor((m) => m.t === 'snap', 3000);
+  check(!a.snap.s.players[2].farting, 'a player whose input goes quiet mid-fart stops farting');
+
+  // disconnect while holding fart -> must stop farting; then rejoin with the token
+  d.send({ t: 'input', fart: true, move: 0, aim: 0 });
+  await a.waitFor((m) => m.t === 'snap' && m.s.players[3].farting, 3000, 'D farting');
+  const token = d.token;
+  await d.close();
+  await a.waitFor((m) => m.t === 'room' && m.room.seats[3] && !m.room.seats[3].connected, 3000, 'D marked disconnected');
+  a.inbox.length = 0;
+  await a.waitFor((m) => m.t === 'snap', 3000);
+  await a.waitFor((m) => m.t === 'snap', 3000);
+  check(!a.snap.s.players[3].farting, 'a player who disconnects mid-fart stops farting');
+
+  const d2 = client('D2');
+  await d2.open;
+  d2.send({ t: 'rejoin', code: a.code, token });
+  await d2.waitFor((m) => m.t === 'welcome');
+  check(d2.seat === 3 && a.room.seats[3].connected, 'rejoin with token gets the same seat back');
+
+  b.send({ t: 'start' });
+  check((await b.waitFor((m) => m.t === 'error')).code === 'not-host', 'only the host can start');
+
+  // race: every client runs the autopilot and sends only its own seat's command
+  const crew = [a, b, c, d2];
+  for (const x of crew) {
+    const pilot = createPilot();
+    x.onSnap = (m) => {
+      if (m.phase !== 'race') return;
+      x.send({ t: 'input', ...pilot(m.s, m.ev)[x.seat] });
+    };
+  }
+  a.send({ t: 'start' });
+  await a.waitFor((m) => m.t === 'room' && m.room.phase === 'countdown', 3000, 'countdown');
+  check(true, 'host start with 4 players begins the countdown');
+  await a.waitFor((m) => m.t === 'room' && m.room.phase === 'race', 3000, 'race');
+  check(a.room.level === 'canal', 'race runs on level 1 (canal)');
+  const res = await a.waitFor((m) => m.t === 'room' && m.room.phase === 'results', 60000, 'results');
+  const r = res.room.result;
+  console.log(`     race finished: ${(r.timeMs / 1000).toFixed(1)} s, ${r.points} points, rank ${r.rank}/${r.of}, ${r.deaths} splats`);
+  check(r.points > 0 && r.rank === 1 && r.players.join() === 'bAnn/b,Bob,Cat,Dan', 'result saved with points, rank and all 4 names');
+
+  const lb = await (await fetch(`http://127.0.0.1:${server.port}/api/leaderboard?level=canal`)).json();
+  check(lb.top.length === 1 && lb.top[0].points === r.points && !!Date.parse(lb.top[0].finished_at), 'leaderboard API returns the game with its date/time');
+
+  a.inbox.length = 0;
+  a.send({ t: 'lobby' });
+  const back = await a.waitFor((m) => m.t === 'room' && m.room.phase === 'lobby', 3000, 'back to lobby');
+  check(back.room.level === 'pond', 'host can take everyone back to the practice pond');
+
+  await Promise.all([a, b, c, d2, e].map((x) => x.close()));
+  await sleep(1200);
+  check(server.rooms.rooms.size === 0, 'room is removed once everyone has left');
+} catch (err) {
+  console.log('FAIL', err.message);
+  failures++;
+} finally {
+  await server.close();
+  rmSync(dataDir, { recursive: true, force: true });
+}
+console.log(failures ? `${failures} failure(s)` : 'all passed');
+process.exit(failures ? 1 : 0);

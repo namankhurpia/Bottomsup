@@ -1,0 +1,308 @@
+// Pure game simulation: no DOM, no three.js. Runs in the browser now and can run
+// unchanged on a Node server later (authoritative multiplayer).
+//
+// Input per tick: an array of NUM_PLAYERS commands { aim, fart, move }.
+//   aim  = how far the player has turned away from facing the centre, radians. 0 (default) =
+//          facing the centre, bum over the water, so the fart pushes the raft straight through
+//          its middle (no spin). Turning away adds spin.
+//   fart = true while the player is holding their fart button
+//   move = -1..1, walk clockwise / counter-clockwise along your quarter of the rim
+// step() returns the events that happened this tick (for sound / HUD).
+
+import { LEVELS } from './levels.js';
+
+export const TICK_RATE = 60;
+export const DT = 1 / TICK_RATE;
+export const NUM_PLAYERS = 4;
+export const FACE_CENTER = 0;
+
+export const RAFT = {
+  radius: 1.7,            // round deck, 3.4 m across
+  rim: 1.3,               // where the crew stand, from the centre
+  density: 0.75,          // ~6.8 kg, same as the square prototype
+  linearDamping: 0.85,    // fake water drag
+  angularDamping: 1.6,
+};
+
+// Each player owns a quarter of the rim, in raft-local angles (0 = raft right, 90 = raft front):
+// P1 0-90 (front-right), P2 90-180 (front-left), P3 180-270 (back-left), P4 270-360 (back-right).
+// They walk freely inside it. Where you stand is your lever: at the side your fart spins the
+// raft, at the front or back it drives straight.
+export const WALK_SPEED = 1.8;   // rad/s along the rim
+const ARC_MARGIN = 0.3;          // keeps neighbours from standing inside each other at the borders
+
+export function arcOf(i) {
+  const lo = (i * Math.PI) / 2;
+  return { lo, hi: lo + Math.PI / 2, min: lo + ARC_MARGIN, max: lo + Math.PI / 2 - ARC_MARGIN, mid: lo + Math.PI / 4 };
+}
+
+// rim angle -> raft-local position
+export function seatAt(pos) {
+  return { x: RAFT.rim * Math.cos(pos), y: RAFT.rim * Math.sin(pos) };
+}
+
+export const GAS = {
+  thrust: 22,              // N while holding (facing the centre, only ~2 players can push any one way)
+  burstThrust: 75,         // N for the first few ticks of each fart ("toot!")
+  burstTicks: 7,
+  burstCost: 0.07,         // gas spent on every new fart, so spamming taps costs more
+  drainPerSec: 0.42,       // a full tank lasts ~2.2 s of holding
+  rechargePerSec: 0.34,
+  rechargeDelayTicks: 30,  // must stop farting for 0.5 s before recharging starts
+  refillThreshold: 0.2,    // after running dry you are locked out until the tank reaches this
+};
+
+const RESPAWN_TICKS = 50;
+
+export function createSim(RAPIER, level = LEVELS.canal) {
+  const world = new RAPIER.World({ x: 0, y: 0 });
+  world.timestep = DT;
+
+  const kinds = new Map(); // collider handle -> { kind, index }
+
+  const fixed = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+  for (const w of level.walls) {
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(w.w / 2, w.h / 2).setTranslation(w.x, w.y).setRestitution(0.35).setFriction(0.35),
+      fixed,
+    );
+  }
+  const addSensor = (r, kind, index) => {
+    const c = world.createCollider(
+      RAPIER.ColliderDesc.cuboid(r.w / 2, r.h / 2).setTranslation(r.x, r.y).setSensor(true),
+      fixed,
+    );
+    kinds.set(c.handle, { kind, index });
+  };
+  level.spikes.forEach((r, i) => addSensor(r, 'spike', i));
+  level.checkpoints.forEach((cp, i) => cp.zone && addSensor(cp.zone, 'checkpoint', i));
+  if (level.finish) addSensor(level.finish, 'finish', 0); // the lobby pond has no finish
+
+  const movers = level.movers.map((def) => {
+    const pose = moverPose(def, 0);
+    const body = world.createRigidBody(
+      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pose.x, pose.y).setRotation(pose.angle),
+    );
+    world.createCollider(RAPIER.ColliderDesc.cuboid(def.w / 2, def.h / 2).setRestitution(0.5).setFriction(0.35), body);
+    return { def, body };
+  });
+
+  const start = level.checkpoints[0];
+  const raft = world.createRigidBody(
+    RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(start.x, start.y)
+      .setRotation(start.angle)
+      .setLinearDamping(RAFT.linearDamping)
+      .setAngularDamping(RAFT.angularDamping)
+      .setCanSleep(false)
+      .setCcdEnabled(true),
+  );
+  const raftCollider = world.createCollider(
+    RAPIER.ColliderDesc.ball(RAFT.radius).setDensity(RAFT.density).setFriction(0.35).setRestitution(0.3),
+    raft,
+  );
+
+  const state = {
+    tick: 0,
+    phase: 'ready',        // ready (waiting for the first fart) | playing | respawning | finished
+    timeTicks: 0,          // race clock, starts on the first fart
+    checkpoint: 0,
+    respawnTimer: 0,
+    deaths: 0,
+    players: Array.from({ length: NUM_PLAYERS }, (_, i) => newPlayer(i)),
+  };
+
+  function newPlayer(i) {
+    return { pos: arcOf(i).mid, aim: FACE_CENTER, farting: false, gas: 1, burst: 0, idleTicks: 0, empty: false };
+  }
+
+  function placeAtCheckpoint() {
+    const cp = level.checkpoints[state.checkpoint];
+    raft.setTranslation({ x: cp.x, y: cp.y }, true);
+    raft.setRotation(cp.angle, true);
+    raft.setLinvel({ x: 0, y: 0 }, true);
+    raft.setAngvel(0, true);
+    for (const p of state.players) Object.assign(p, { farting: false, gas: 1, burst: 0, idleTicks: 0, empty: false });
+  }
+
+  function step(cmds) {
+    const events = [];
+    state.tick++;
+
+    if (state.phase === 'respawning' && --state.respawnTimer <= 0) {
+      placeAtCheckpoint();
+      state.phase = state.timeTicks > 0 ? 'playing' : 'ready';
+      events.push({ type: 'respawned' });
+    }
+
+    const canAct = state.phase === 'ready' || state.phase === 'playing';
+    const pos = raft.translation();
+    const angle = raft.rotation();
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    state.players.forEach((p, i) => {
+      const cmd = cmds[i] || { aim: p.aim, fart: false };
+      if (Number.isFinite(cmd.aim)) p.aim = cmd.aim;
+      if (cmd.move) {
+        const arc = arcOf(i);
+        const move = Math.max(-1, Math.min(1, cmd.move));
+        p.pos = Math.max(arc.min, Math.min(arc.max, p.pos + move * WALK_SPEED * DT));
+      }
+
+      const active = canAct && cmd.fart && !p.empty && p.gas > 0;
+      if (active && !p.farting) {
+        p.burst = GAS.burstTicks;
+        p.gas = Math.max(0, p.gas - GAS.burstCost);
+        events.push({ type: 'fartStart', player: i });
+        if (state.phase === 'ready') {
+          state.phase = 'playing';
+          events.push({ type: 'go' });
+        }
+      } else if (!active && p.farting) {
+        events.push({ type: 'fartEnd', player: i });
+      }
+      p.farting = active;
+
+      if (active) {
+        const force = p.burst > 0 ? GAS.burstThrust : GAS.thrust;
+        if (p.burst > 0) p.burst--;
+        p.idleTicks = 0;
+        p.gas -= GAS.drainPerSec * DT;
+        if (p.gas <= 0) {
+          p.gas = 0;
+          p.empty = true;
+          p.farting = false;
+          events.push({ type: 'fartEnd', player: i }, { type: 'empty', player: i });
+        }
+        // thrust direction: local -> world
+        // facing the centre pushes along pos + PI (from the rim toward the middle)
+        const dir = p.pos + Math.PI + p.aim;
+        const lx = Math.cos(dir);
+        const ly = Math.sin(dir);
+        const dx = lx * cos - ly * sin;
+        const dy = lx * sin + ly * cos;
+        // seat position: local -> world. Off-centre pushes create torque, which is the whole game.
+        const s = seatAt(p.pos);
+        const px = pos.x + s.x * cos - s.y * sin;
+        const py = pos.y + s.x * sin + s.y * cos;
+        raft.applyImpulseAtPoint({ x: dx * force * DT, y: dy * force * DT }, { x: px, y: py }, true);
+      } else {
+        p.burst = 0;
+        p.idleTicks++;
+        if (p.idleTicks > GAS.rechargeDelayTicks) p.gas = Math.min(1, p.gas + GAS.rechargePerSec * DT);
+        if (p.empty && p.gas >= GAS.refillThreshold) p.empty = false;
+      }
+    });
+
+    const mass = raft.mass();
+    for (const c of level.currents) {
+      if (inRect(pos, c)) raft.applyImpulse({ x: c.ax * mass * DT, y: c.ay * mass * DT }, true);
+    }
+
+    const t = state.tick * DT;
+    for (const m of movers) {
+      const pose = moverPose(m.def, t);
+      m.body.setNextKinematicTranslation({ x: pose.x, y: pose.y });
+      m.body.setNextKinematicRotation(pose.angle);
+    }
+
+    world.step();
+
+    if (state.phase === 'playing') state.timeTicks++;
+
+    world.intersectionPairsWith(raftCollider, (other) => {
+      const k = kinds.get(other.handle);
+      if (!k) return;
+      if (k.kind === 'spike' && (state.phase === 'playing' || state.phase === 'ready')) {
+        state.phase = 'respawning';
+        state.respawnTimer = RESPAWN_TICKS;
+        state.deaths++;
+        for (const p of state.players) {
+          if (p.farting) events.push({ type: 'fartEnd', player: state.players.indexOf(p) });
+          p.farting = false;
+        }
+        events.push({ type: 'ouch' });
+      } else if (k.kind === 'checkpoint' && k.index > state.checkpoint && state.phase === 'playing') {
+        state.checkpoint = k.index;
+        events.push({ type: 'checkpoint', index: k.index });
+      } else if (k.kind === 'finish' && state.phase === 'playing') {
+        state.phase = 'finished';
+        state.players.forEach((p, i) => {
+          if (p.farting) events.push({ type: 'fartEnd', player: i });
+          p.farting = false;
+        });
+        events.push({ type: 'finish', timeTicks: state.timeTicks });
+      }
+    });
+
+    return events;
+  }
+
+  function snapshot() {
+    const p = raft.translation();
+    const v = raft.linvel();
+    return {
+      tick: state.tick,
+      phase: state.phase,
+      timeTicks: state.timeTicks,
+      checkpoint: state.checkpoint,
+      deaths: state.deaths,
+      raft: { x: p.x, y: p.y, angle: raft.rotation(), vx: v.x, vy: v.y, av: raft.angvel() },
+      players: state.players.map((pl) => ({ ...pl })),
+      movers: movers.map((m) => {
+        const mp = m.body.translation();
+        return { x: mp.x, y: mp.y, angle: m.body.rotation() };
+      }),
+    };
+  }
+
+  // Back to the last checkpoint (player-requested, e.g. stuck). Costs a death.
+  function respawn() {
+    if (state.phase !== 'playing' && state.phase !== 'ready') return;
+    state.phase = 'respawning';
+    state.respawnTimer = 1;
+    state.deaths++;
+  }
+
+  function restart(checkpoint = 0) {
+    state.checkpoint = Math.max(0, Math.min(level.checkpoints.length - 1, checkpoint | 0));
+    state.timeTicks = 0;
+    state.deaths = 0;
+    state.phase = 'ready';
+    state.respawnTimer = 0;
+    placeAtCheckpoint();
+  }
+
+  // Start the race clock now (online races start at GO, not on the first fart).
+  function go() {
+    if (state.phase === 'ready') state.phase = 'playing';
+  }
+
+  // Rapier worlds live in WASM memory; rooms must free theirs when they're done.
+  function free() {
+    world.free();
+  }
+
+  // Debug/tuning only: drop the raft somewhere.
+  function debugPlace(x, y, angle = 0) {
+    raft.setTranslation({ x, y }, true);
+    raft.setRotation(angle, true);
+    raft.setLinvel({ x: 0, y: 0 }, true);
+    raft.setAngvel(0, true);
+  }
+
+  return { level, step, snapshot, respawn, restart, go, free, debugPlace };
+}
+
+export function moverPose(def, t) {
+  if (def.type === 'slider') {
+    const s = 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / def.period + (def.phase || 0));
+    return { x: def.from.x + (def.to.x - def.from.x) * s, y: def.from.y + (def.to.y - def.from.y) * s, angle: 0 };
+  }
+  return { x: def.x, y: def.y, angle: def.speed * t + (def.phase || 0) };
+}
+
+function inRect(p, r) {
+  return Math.abs(p.x - r.x) <= r.w / 2 && Math.abs(p.y - r.y) <= r.h / 2;
+}
