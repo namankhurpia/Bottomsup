@@ -174,7 +174,8 @@ input {
 .board-table .when { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .board-table .empty-row td { color: var(--muted); text-align: center; padding: 14px; }
 
-#lobby { position: fixed; top: 90px; right: 16px; width: 300px; max-width: calc(100% - 32px); }
+#lobby { position: fixed; top: 90px; right: 16px; width: 344px; max-width: calc(100% - 32px); max-height: calc(100vh - 106px); overflow-y: auto; pointer-events: auto; }
+.journey-label { margin-top: 12px; }
 .code-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
 .room-code { font-size: 52px; font-weight: 900; letter-spacing: 10px; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .seats { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 6px; }
@@ -418,3 +419,9 @@ body.touch #lobby .journey { margin: 2px auto 4px; }
 }
 .about-card .gh:hover { background: #32383f; }
 .about-card .made { font-size: 13px; font-weight: 700; color: var(--muted); margin: 0; }
+
+.about-btn {
+  position: fixed; top: calc(16px + env(safe-area-inset-top)); right: calc(16px + env(safe-area-inset-right)); z-index: 40;
+  display: none; padding: 8px 14px; font-size: 14px; box-shadow: 0 6px 20px rgba(18, 48, 74, 0.15);
+}
+body.mode-menu .about-btn { display: block; }

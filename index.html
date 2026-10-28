@@ -31,7 +31,6 @@
         <div class="nav-row">
           <button id="open-levels">Levels</button>
           <button id="open-history">Race history</button>
-          <button id="open-about">About</button>
           <button id="solo" class="link">or practise solo</button>
         </div>
 
@@ -83,6 +82,9 @@
       </div>
     </section>
 
+    <!-- always visible on the home screens -->
+    <button id="open-about" class="about-btn">👋 About</button>
+
     <!-- about: a small popup about the maker -->
     <div id="about" class="modal" role="dialog" aria-modal="true" aria-labelledby="about-title" hidden>
       <div class="card about-card">
@@ -106,10 +108,10 @@
         <div id="room-code" class="room-code">----</div>
         <p class="small">Send this code to up to 3 friends. The raft is split evenly between everyone on it, and the host can start with 1 to 4 players.</p>
         <ol id="seats" class="seats"></ol>
-        <div class="code-label">Your journey <span class="pick-hint">(host taps a level)</span></div>
-        <div id="level-pick"></div>
         <p id="lobby-status" class="status-line"></p>
         <button id="start" class="primary" disabled>Start race</button>
+        <div class="code-label journey-label">Your journey <span class="pick-hint">(host taps a level)</span></div>
+        <div id="level-pick"></div>
         <p class="small hint">While you wait, paddle around the pond: <kbd>Space</kbd> to fart, <kbd>A</kbd> <kbd>D</kbd> or <kbd>←</kbd> <kbd>→</kbd> to walk left / right.</p>
       </div>
     </aside>

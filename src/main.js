@@ -345,7 +345,7 @@ function renderLevelPick(room, isHost) {
     current: room.choice,
     pickable: isHost,
     onPick: (id) => net.send({ t: 'level', level: id }),
-    dir: isTouch ? 'across' : 'down',
+    dir: 'across', // compact, so the lobby card always fits
   });
 }
 
