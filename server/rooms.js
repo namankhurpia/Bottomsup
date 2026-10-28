@@ -5,6 +5,7 @@
 import { randomBytes } from 'node:crypto';
 import { createSim, DT, NUM_PLAYERS, TICK_RATE } from '../src/sim/sim.js';
 import { LEVELS, RACE_LEVELS } from '../src/sim/levels.js';
+import { unlockedLevels } from '../src/sim/progress.js';
 import { pointsFor } from '../src/sim/scoring.js';
 
 const COUNTDOWN_TICKS = 3 * TICK_RATE;
@@ -38,6 +39,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
       this.emptySince = null;
       this.startedAt = null;
       this.lastResult = null;
+      this.levelChoice = RACE_LEVELS[0]; // what the host picked for the next race
       rooms.set(this.code, this);
       log(`room ${this.code} created`);
     }
@@ -114,13 +116,42 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
       };
     }
 
+    // Levels this room can play: anything unlocked by anyone sitting in it.
+    unlocked() {
+      const cleared = new Set();
+      for (const s of this.seats) if (s) for (const id of Object.keys(db.progress(s.name))) cleared.add(id);
+      return unlockedLevels(cleared);
+    }
+
+    // the host's pick, or the furthest unlocked level if whoever unlocked it has left
+    effectiveLevel(unlocked = this.unlocked()) {
+      return unlocked.includes(this.levelChoice) ? this.levelChoice : unlocked[unlocked.length - 1];
+    }
+
+    // host: choose the level for the next race
+    chooseLevel(seat, id) {
+      if (seat !== this.hostSeat) return { error: 'not-host' };
+      if (!RACE_LEVELS.includes(id)) return { error: 'bad-level' };
+      if (!this.unlocked().includes(id)) return { error: 'locked' };
+      this.levelChoice = id;
+      this.broadcastRoom();
+      return {};
+    }
+
     // host: start (or restart) the race with whoever is here, 1 to 4 players.
     // Anyone seated but disconnected gives up their seat; the crew is everyone left.
-    start(seat) {
+    // `level` (optional) picks the level in the same step, e.g. "Next level" on the results screen.
+    start(seat, level) {
       if (seat !== this.hostSeat) return { error: 'not-host' };
       if (this.phase !== 'lobby' && this.phase !== 'results') return { error: 'in-progress' };
       this.seats = this.seats.map((s) => (s && !s.connected ? null : s));
-      this.load(RACE_LEVELS[0]);
+      const unlocked = this.unlocked();
+      if (level !== undefined) {
+        if (!RACE_LEVELS.includes(level)) return { error: 'bad-level' };
+        if (!unlocked.includes(level)) return { error: 'locked' };
+        this.levelChoice = level;
+      }
+      this.load(this.effectiveLevel(unlocked));
       this.phase = 'countdown';
       this.countdown = COUNTDOWN_TICKS;
       this.lastResult = null;
@@ -199,10 +230,13 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
     }
 
     roomState() {
+      const unlocked = this.unlocked();
       return {
         code: this.code,
         phase: this.phase,
         level: this.levelId,
+        choice: this.effectiveLevel(unlocked),
+        unlocked,
         host: this.hostSeat,
         seats: this.seats.map((s) => (s ? { name: s.name, connected: s.connected } : null)),
         result: this.lastResult,

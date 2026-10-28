@@ -7,7 +7,9 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
 import RAPIER from '@dimforge/rapier2d-compat';
 import { DT } from '../src/sim/sim.js';
-import { LEVELS } from '../src/sim/levels.js';
+import { RACE_LEVELS } from '../src/sim/levels.js';
+import { unlockedLevels } from '../src/sim/progress.js';
+import { cleanName } from './names.js';
 import { openDb } from './db.js';
 import { createRooms } from './rooms.js';
 
@@ -37,9 +39,20 @@ export async function startServer({
       const url = new URL(req.url, 'http://x');
       if (url.pathname === '/api/health') return json(res, { ok: true, rooms: rooms.rooms.size });
       if (url.pathname === '/api/leaderboard') {
-        const level = LEVELS[url.searchParams.get('level')] ? url.searchParams.get('level') : 'canal';
+        const level = RACE_LEVELS.includes(url.searchParams.get('level')) ? url.searchParams.get('level') : RACE_LEVELS[0];
         const crew = Math.min(4, Math.max(1, Number(url.searchParams.get('crew')) || 4));
         return json(res, { level, crew, top: db.leaderboard(level, crew, 20), recent: db.recentGames(15) });
+      }
+      // which levels a name has finished / unlocked, with their best times
+      if (url.pathname === '/api/progress') {
+        const name = cleanName(url.searchParams.get('name'));
+        const cleared = db.progress(name);
+        return json(res, { name, cleared, unlocked: unlockedLevels(Object.keys(cleared)) });
+      }
+      // how many races have been run (overall, per level, per crew size, and yours) + recent ones
+      if (url.pathname === '/api/history') {
+        const name = cleanName(url.searchParams.get('name'));
+        return json(res, { name, ...db.history(name, 50) });
       }
       // static files from the Vite build, falling back to index.html
       let file = normalize(join(root, decodeURIComponent(url.pathname)));
@@ -112,7 +125,8 @@ export async function startServer({
       if (!room) return;
       switch (msg.t) {
         case 'input': return room.input(seat, msg);
-        case 'start': { const r = room.start(seat); return r.error && fail(r.error); }
+        case 'start': { const r = room.start(seat, typeof msg.level === 'string' ? msg.level : undefined); return r.error && fail(r.error); }
+        case 'level': { const r = room.chooseLevel(seat, String(msg.level)); return r.error && fail(r.error); }
         case 'lobby': { const r = room.toLobby(seat); return r.error && fail(r.error); }
         case 'respawn': return room.respawn();
         case 'leave':
@@ -170,11 +184,6 @@ export async function startServer({
       db.close();
     },
   };
-}
-
-function cleanName(raw) {
-  if (typeof raw !== 'string') return '';
-  return raw.replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 16);
 }
 
 function json(res, body) {

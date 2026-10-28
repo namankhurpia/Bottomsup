@@ -81,6 +81,24 @@ try {
   check(cd.room.level === 'canal' && soloSnap.s.crew.join() === '0', 'host can start alone: race with a crew of 1');
   f.send({ t: 'lobby' });
   await f.waitFor((m) => m.t === 'room' && m.room.phase === 'lobby', 3000, 'solo back to lobby');
+
+  // level 2 is locked until someone in the room has finished level 1
+  f.send({ t: 'start', level: 'plank' });
+  check((await f.waitFor((m) => m.t === 'error')).code === 'locked', 'level 2 is locked before level 1 is cleared');
+  server.db.saveGame({ level: 'canal', room: f.code, players: ['Solo'], crewSize: 1, timeMs: 80000, points: 938, deaths: 0, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() });
+  const prog = await (await fetch(`http://127.0.0.1:${server.port}/api/progress?name=sOLO`)).json();
+  check(!!prog.cleared.canal && prog.unlocked.join() === 'canal,plank', 'progress API: clearing level 1 unlocks level 2 (names match any case)');
+  f.inbox.length = 0;
+  f.send({ t: 'level', level: 'plank' });
+  const picked = await f.waitFor((m) => m.t === 'room' && m.room.choice === 'plank', 3000, 'level picked');
+  check(picked.room.unlocked.join() === 'canal,plank', 'room sees level 2 unlocked and the host can pick it');
+  f.send({ t: 'level', level: 'rapids' });
+  check((await f.waitFor((m) => m.t === 'error')).code === 'locked', 'level 3 still locked');
+  f.send({ t: 'start' });
+  const lvl2 = await f.waitFor((m) => m.t === 'room' && m.room.phase === 'countdown', 3000, 'level 2 countdown');
+  check(lvl2.room.level === 'plank', 'race starts on the picked level');
+  f.send({ t: 'lobby' });
+  await f.waitFor((m) => m.t === 'room' && m.room.phase === 'lobby', 3000, 'back to lobby');
   await f.close();
 
   d.send({ t: 'join', name: 'Dan', code: a.code });
@@ -139,7 +157,10 @@ try {
   const lb = await (await fetch(`http://127.0.0.1:${server.port}/api/leaderboard?level=canal&crew=4`)).json();
   check(lb.top.length === 1 && lb.top[0].points === r.points && !!Date.parse(lb.top[0].finished_at), 'leaderboard API returns the game with its date/time');
   const lb1 = await (await fetch(`http://127.0.0.1:${server.port}/api/leaderboard?level=canal&crew=1`)).json();
-  check(lb1.top.length === 0, '4-player games stay off the solo leaderboard');
+  check(!lb1.top.some((g) => g.id === r.id), '4-player games stay off the solo leaderboard');
+  const hist = await (await fetch(`http://127.0.0.1:${server.port}/api/history?name=Bob`)).json();
+  check(hist.total === 2 && hist.byLevel.canal === 2 && hist.byCrew['4'] === 1 && hist.mine === 1 && hist.games[0].id === r.id,
+    'history API counts all races, per level, per crew size, and yours');
 
   a.inbox.length = 0;
   a.send({ t: 'lobby' });
