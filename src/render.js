@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { ALL_SEATS, NUM_PLAYERS, RAFT, arcFor, seatAt } from './sim/sim.js';
 
 export const PLAYER_COLORS = ['#ff5a5f', '#3fa7ff', '#ffc93c', '#5ad16a'];
-const DECK_Y = 0.27;
+const DECK_Y = 0.5; // the crew sit on the raft's tube
 
 export function createRenderer(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -269,12 +269,13 @@ export function createRenderer(container) {
         const catcher = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.h).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.22 }));
         catcher.position.copy(toWorld(r.x, r.y, 0.01));
         catcher.receiveShadow = true;
-        const tower = new THREE.Mesh(new THREE.BoxGeometry(r.w + 0.5, 40, r.h + 0.5), stone);
-        tower.position.copy(toWorld(r.x, r.y, -20.06));
+        const tower = new THREE.Mesh(new THREE.BoxGeometry(r.w + 0.5, -FLOOR, r.h + 0.5), stone);
+        tower.position.copy(toWorld(r.x, r.y, FLOOR / 2 - 0.06));
         const edge = new THREE.Mesh(new THREE.BoxGeometry(r.w + 0.7, 0.25, r.h + 0.7), lip);
         edge.position.copy(toWorld(r.x, r.y, -0.2));
         lg.add(surface, catcher, tower, edge);
       }
+      buildValley(lg, level);
     }
 
     // --- scenery: little islands outside the canal --------------------------------
@@ -310,6 +311,82 @@ export function createRenderer(container) {
     return { lg, flags, currentTextures, moverMeshes };
   }
 
+  // Far below the water channels of levels with a drop: a hazy valley with a winding river,
+  // pine trees, rock spires reaching up towards you and layers of mist. Seeded, so every
+  // player sees the same valley.
+  const FLOOR = -46;
+  function buildValley(lg, level) {
+    let seed = 11;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const b = level.bounds;
+    const cx = (b.minX + b.maxX) / 2;
+    const cy = (b.minY + b.maxY) / 2;
+    const span = Math.max(b.maxX - b.minX, b.maxY - b.minY) + 160;
+    // keep spires out from under the channels so nothing pokes through
+    const nearWater = (x, y, pad) => level.water.some((r) => Math.abs(x - r.x) < r.w / 2 + pad && Math.abs(y - r.y) < r.h / 2 + pad);
+
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(span, span).rotateX(-Math.PI / 2), mat('#4d6a44', { roughness: 1 }));
+    ground.position.copy(toWorld(cx, cy, FLOOR));
+    lg.add(ground);
+
+    // a river winding along the valley floor
+    const riverMat = mat('#3c8fc4', { roughness: 0.4, metalness: 0.1 });
+    let px = cx - span / 2;
+    let py = cy + Math.sin(0) * 18;
+    for (let k = 1; k <= 60; k++) {
+      const x = cx - span / 2 + (k / 60) * span;
+      const y = cy + Math.sin(k * 0.35) * 18 + Math.sin(k * 0.13) * 10;
+      const len = Math.hypot(x - px, y - py);
+      const seg = new THREE.Mesh(new THREE.BoxGeometry(len + 1.5, 0.2, 4.5), riverMat);
+      seg.position.copy(toWorld((x + px) / 2, (y + py) / 2, FLOOR + 0.1));
+      seg.rotation.y = Math.atan2(y - py, x - px);
+      lg.add(seg);
+      [px, py] = [x, y];
+    }
+
+    // rock spires, some tall enough to loom just below the channels
+    const rockMats = ['#7b7266', '#8a8277', '#6b645b'].map((c) => mat(c, { roughness: 1, flatShading: true }));
+    for (let i = 0; i < 70; i++) {
+      const x = cx + (rand() - 0.5) * span * 0.8;
+      const y = cy + (rand() - 0.5) * span * 0.8;
+      if (nearWater(x, y, 5)) continue;
+      const h = 10 + rand() * 26;
+      const r = 2 + rand() * 4;
+      const spire = new THREE.Mesh(new THREE.ConeGeometry(r, h, 5 + ((rand() * 3) | 0)), rockMats[i % 3]);
+      spire.position.copy(toWorld(x, y, FLOOR + h / 2));
+      spire.rotation.y = rand() * Math.PI;
+      lg.add(spire);
+    }
+
+    // pine trees on the valley floor
+    const pine = mat('#2f5a34', { roughness: 1, flatShading: true });
+    const trunkMat = mat('#5a3d24');
+    const pineGeo = new THREE.ConeGeometry(1.4, 4.5, 6);
+    const trunkGeo = new THREE.CylinderGeometry(0.25, 0.3, 1.2);
+    for (let i = 0; i < 220; i++) {
+      const x = cx + (rand() - 0.5) * span * 0.85;
+      const y = cy + (rand() - 0.5) * span * 0.85;
+      const s = 0.7 + rand() * 0.9;
+      const top = new THREE.Mesh(pineGeo, pine);
+      top.scale.setScalar(s);
+      top.position.copy(toWorld(x, y, FLOOR + 1.2 * s + 2.25 * s));
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.scale.setScalar(s);
+      trunk.position.copy(toWorld(x, y, FLOOR + 0.6 * s));
+      lg.add(top, trunk);
+    }
+
+    // drifting mist layers between you and the bottom
+    for (const [h, o] of [[-12, 0.1], [-24, 0.14], [-36, 0.18]]) {
+      const mist = new THREE.Mesh(
+        new THREE.PlaneGeometry(span, span).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: '#e8f0f7', transparent: true, opacity: o, depthWrite: false }),
+      );
+      mist.position.copy(toWorld(cx, cy, h));
+      lg.add(mist);
+    }
+  }
+
   function setLevel(level) {
     if (levelGroup) {
       scene.remove(levelGroup);
@@ -331,10 +408,10 @@ export function createRenderer(container) {
     const chasm = !!level.water;
     water.visible = !chasm;
     shadowCatcher.visible = !chasm;
-    scene.background.set(chasm ? '#5f7f9e' : '#9fdcf5');
-    scene.fog.color.set(chasm ? '#5f7f9e' : '#9fdcf5');
-    scene.fog.near = chasm ? 30 : 45;
-    scene.fog.far = chasm ? 75 : 110;
+    scene.background.set(chasm ? '#7d9bb6' : '#9fdcf5');
+    scene.fog.color.set(chasm ? '#7d9bb6' : '#9fdcf5');
+    scene.fog.near = chasm ? 40 : 45;
+    scene.fog.far = chasm ? 150 : 110; // far enough to see the valley floor, hazy
     firstFrame = true;
   }
 
@@ -345,29 +422,40 @@ export function createRenderer(container) {
   scene.add(raft);
   // round deck: plank texture on the top, a log rim, and each player's quarter marked on the rim
   const R = RAFT.radius;
-  const planks = document.createElement('canvas');
-  planks.width = planks.height = 256;
+  // an inflatable rafting dinghy: orange tube with white stripes, pale rubber floor, grab rope
+  const TUBE = 0.3; // tube thickness (radius)
+  const stripes = document.createElement('canvas');
+  stripes.width = 512;
+  stripes.height = 16;
   {
-    const g = planks.getContext('2d');
-    const shades = ['#c48a52', '#b37a44', '#c9925a', '#ba8049'];
-    for (let i = 0; i < 8; i++) {
-      g.fillStyle = shades[i % shades.length];
-      g.fillRect(i * 32, 0, 32, 256);
-      g.fillStyle = 'rgba(60, 30, 10, 0.55)';
-      g.fillRect(i * 32, 0, 2, 256);
-    }
+    const g = stripes.getContext('2d');
+    g.fillStyle = '#ff7417';
+    g.fillRect(0, 0, 512, 16);
+    g.fillStyle = '#ffffff';
+    for (let k = 0; k < 12; k++) g.fillRect(k * (512 / 12), 0, 14, 16);
   }
-  const plankTex = new THREE.CanvasTexture(planks);
-  plankTex.colorSpace = THREE.SRGBColorSpace;
-  const deckMesh = shadowed(new THREE.Mesh(
-    new THREE.CylinderGeometry(R, R * 0.96, 0.24, 48),
-    [mat('#8a5a33'), mat('#ffffff', { map: plankTex }), mat('#8a5a33')],
+  const stripeTex = new THREE.CanvasTexture(stripes);
+  stripeTex.colorSpace = THREE.SRGBColorSpace;
+  const tube = shadowed(new THREE.Mesh(
+    new THREE.TorusGeometry(R - TUBE, TUBE, 16, 64).rotateX(Math.PI / 2),
+    mat('#ffffff', { map: stripeTex, roughness: 0.45 }),
   ));
-  deckMesh.position.y = 0.15;
-  deck.add(deckMesh);
-  const rim = shadowed(new THREE.Mesh(new THREE.TorusGeometry(R, 0.13, 10, 48).rotateX(Math.PI / 2), woodDark));
-  rim.position.y = 0.3;
-  deck.add(rim);
+  tube.position.y = 0.32;
+  deck.add(tube);
+  const floor = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(R - TUBE, R - TUBE - 0.05, 0.12, 48), mat('#e4e8ee', { roughness: 0.7 })));
+  floor.position.y = 0.12;
+  deck.add(floor);
+  const rope = new THREE.Mesh(new THREE.TorusGeometry(R + 0.01, 0.035, 6, 64).rotateX(Math.PI / 2), mat('#2b2f36', { roughness: 0.9 }));
+  rope.position.y = 0.36;
+  deck.add(rope);
+  for (let k = 0; k < 8; k++) {
+    // little rope loops (the handles) around the outside of the tube
+    const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
+    const loop = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.03, 6, 12), mat('#2b2f36'));
+    loop.position.set(Math.cos(a) * (R + 0.04), 0.28, -Math.sin(a) * (R + 0.04));
+    loop.rotation.y = a + Math.PI / 2;
+    deck.add(loop);
+  }
   // each player's slice of the rim, rebuilt whenever the crew (1-4 players) changes
   const zones = new THREE.Group();
   deck.add(zones);
@@ -386,21 +474,22 @@ export function createRenderer(container) {
       const color = PLAYER_COLORS[i];
       // whole slice (faint) and the walkable part (stronger); a solo player walks the full ring
       const walk = arc.full ? [arc.lo, arc.hi] : [arc.min, arc.max];
-      for (const [from, to, opacity, inner, outer] of [
-        [arc.lo, arc.hi, 0.32, RAFT.rim - 0.5, R - 0.05],
-        [walk[0], walk[1], 0.85, RAFT.rim - 0.11, RAFT.rim + 0.11],
+      // the slice on the floor (faint) and the part you can walk along on top of the tube
+      for (const [from, to, opacity, inner, outer, y] of [
+        [arc.lo, arc.hi, 0.35, 0.45, R - TUBE * 2, 0.19],
+        [walk[0], walk[1], 0.8, RAFT.rim - 0.09, RAFT.rim + 0.09, 0.64],
       ]) {
         const band = new THREE.Mesh(
           new THREE.RingGeometry(inner, outer, arc.full ? 64 : 24, 1, from, to - from).rotateX(-Math.PI / 2),
           new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }),
         );
-        band.position.y = 0.285;
+        band.position.y = y;
         zones.add(band);
       }
       if (arc.full) continue;
       // divider at the start of this slice
-      const spoke = new THREE.Mesh(new THREE.BoxGeometry(R - 0.35, 0.03, 0.07), woodDark);
-      spoke.position.set(Math.cos(arc.lo) * (R / 2 + 0.15), 0.29, -Math.sin(arc.lo) * (R / 2 + 0.15));
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(R - TUBE * 2 - 0.3, 0.03, 0.06), woodDark);
+      spoke.position.set(Math.cos(arc.lo) * ((R - TUBE * 2) / 2 + 0.15), 0.2, -Math.sin(arc.lo) * ((R - TUBE * 2) / 2 + 0.15));
       spoke.rotation.y = arc.lo;
       zones.add(spoke);
     }
