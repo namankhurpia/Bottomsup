@@ -7,9 +7,10 @@
 // onto spikes, a bobbing gate) to the finish.
 
 export const LEVEL = {
-  id: 'canal',
+  id: 'canal', // keep: live scores and unlock progress are keyed on it
   number: 1,
   name: 'The Bendy Canal',
+  blurb: 'A walled canal with a tight gap, a sharp turn onto spikes and a current that drags you sideways.',
   par: 75, // seconds; finishing in par time scores 1000 points
 
   walls: [
@@ -55,4 +56,7 @@ export const LEVEL = {
 
   // Visual only: where the canal water is (used for the camera bounds and decorations).
   bounds: { minX: -8, maxX: 62, minY: -8, maxY: 54 },
+
+  // Test autopilot's path (scripts/pilot.js); not used by the game itself.
+  route: [[0, 14], [0, 24], [0, 30], [0, 42], [8, 46.25], [17, 46.25], [30, 50], [44, 50], [57, 46.25]],
 };

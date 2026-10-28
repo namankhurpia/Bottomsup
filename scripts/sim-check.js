@@ -1,6 +1,7 @@
 // Headless sanity check of the sim with everyone facing the centre by default.
 import RAPIER from '@dimforge/rapier2d-compat';
 import { arcFor, createSim, FACE_CENTER, NUM_PLAYERS } from '../src/sim/sim.js';
+import { LEVELS } from '../src/sim/levels.js';
 
 await RAPIER.init();
 
@@ -53,4 +54,24 @@ const ghost = createSim(RAPIER, undefined, { crew: [0] });
 for (let t = 0; t < 60; t++) ghost.step([{ fart: false }, { aim: 0, fart: true }, { aim: 0, fart: true }, { aim: 0, fart: true }]);
 const g = ghost.snapshot();
 check(Math.hypot(g.raft.vx, g.raft.vy) < 1e-6 && !g.players[1].farting, 'players who are not in the crew cannot push');
+// falling off the edge on levels with a drop
+function settle(levelId, x, y) {
+  const sim = createSim(RAPIER, LEVELS[levelId]);
+  sim.go();
+  sim.debugPlace(x, y, 0);
+  const ev = [];
+  for (let t = 0; t < 5; t++) ev.push(...sim.step([]));
+  return { s: sim.snapshot(), ev };
+}
+const onRoad = settle('plank', 0, 25);
+check(onRoad.s.phase === 'playing' && !onRoad.ev.some((e) => e.type === 'fell'), 'raft in the middle of a thin road stays put');
+const offRoad = settle('plank', 4, 25);
+check(offRoad.s.phase === 'respawning' && offRoad.s.cause === 'fell' && offRoad.ev.some((e) => e.type === 'fell'), 'raft whose centre leaves the water falls and respawns');
+const canal = settle('canal', 0, 25);
+check(canal.s.phase === 'playing', 'levels without a drop never make you fall');
+for (const id of ['plank', 'rapids']) {
+  const L = LEVELS[id];
+  const inside = (p) => L.water.some((r) => Math.abs(p.x - r.x) <= r.w / 2 && Math.abs(p.y - r.y) <= r.h / 2);
+  check(L.checkpoints.every(inside) && inside(L.finish), `${id}: every checkpoint and the finish sit on safe water`);
+}
 process.exit(ok ? 0 : 1);

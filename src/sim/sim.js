@@ -39,6 +39,9 @@ const ARC_BASE = { 1: -Math.PI / 2, 2: -Math.PI / 2, 3: -Math.PI / 6, 4: 0 };
 // Fart power per player by crew size. A full crew usually has ~2 people able to push in any
 // direction; with bigger slices it's often just one, so smaller crews push harder each.
 export const CREW_THRUST = { 1: 1.4, 2: 1.35, 3: 1.4, 4: 1 };
+// How fast the tank drains while holding, by crew size. A full crew takes turns; a lone
+// farter has to keep pushing through a raging corner alone, so their tank lasts longer.
+export const CREW_GAS_DRAIN = { 1: 0.5, 2: 0.7, 3: 0.85, 4: 1 };
 
 // seat's slice of the rim for this crew (seats in play, ascending), or null if not playing
 export function arcFor(seat, crew = ALL_SEATS) {
@@ -72,7 +75,7 @@ export const GAS = {
   refillThreshold: 0.2,    // after running dry you are locked out until the tank reaches this
 };
 
-const RESPAWN_TICKS = 50;
+export const RESPAWN_TICKS = 50;
 
 export function createSim(RAPIER, level = LEVELS.canal, { crew = ALL_SEATS } = {}) {
   const world = new RAPIER.World({ x: 0, y: 0 });
@@ -128,6 +131,7 @@ export function createSim(RAPIER, level = LEVELS.canal, { crew = ALL_SEATS } = {
     timeTicks: 0,          // race clock, starts on the first fart
     checkpoint: 0,
     respawnTimer: 0,
+    cause: null,
     deaths: 0,
     crew: cleanCrew(crew),
     players: [],
@@ -176,6 +180,7 @@ export function createSim(RAPIER, level = LEVELS.canal, { crew = ALL_SEATS } = {
     const sin = Math.sin(angle);
 
     const boost = CREW_THRUST[state.crew.length];
+    const drain = GAS.drainPerSec * CREW_GAS_DRAIN[state.crew.length];
     state.players.forEach((p, i) => {
       const arc = arcFor(i, state.crew);
       if (!arc) return; // not playing this round
@@ -205,7 +210,7 @@ export function createSim(RAPIER, level = LEVELS.canal, { crew = ALL_SEATS } = {
         const force = (p.burst > 0 ? GAS.burstThrust : GAS.thrust) * boost;
         if (p.burst > 0) p.burst--;
         p.idleTicks = 0;
-        p.gas -= GAS.drainPerSec * DT;
+        p.gas -= drain * DT;
         if (p.gas <= 0) {
           p.gas = 0;
           p.empty = true;
@@ -248,18 +253,17 @@ export function createSim(RAPIER, level = LEVELS.canal, { crew = ALL_SEATS } = {
 
     if (state.phase === 'playing') state.timeTicks++;
 
+    // Levels with a drop list their safe water; if the raft's centre leaves all of it, it falls.
+    if (level.water && (state.phase === 'playing' || state.phase === 'ready')) {
+      const at = raft.translation();
+      if (!level.water.some((r) => inRect(at, r))) startRespawn('fell', events);
+    }
+
     world.intersectionPairsWith(raftCollider, (other) => {
       const k = kinds.get(other.handle);
       if (!k) return;
       if (k.kind === 'spike' && (state.phase === 'playing' || state.phase === 'ready')) {
-        state.phase = 'respawning';
-        state.respawnTimer = RESPAWN_TICKS;
-        state.deaths++;
-        for (const p of state.players) {
-          if (p.farting) events.push({ type: 'fartEnd', player: state.players.indexOf(p) });
-          p.farting = false;
-        }
-        events.push({ type: 'ouch' });
+        startRespawn('spike', events);
       } else if (k.kind === 'checkpoint' && k.index > state.checkpoint && state.phase === 'playing') {
         state.checkpoint = k.index;
         events.push({ type: 'checkpoint', index: k.index });
@@ -276,6 +280,19 @@ export function createSim(RAPIER, level = LEVELS.canal, { crew = ALL_SEATS } = {
     return events;
   }
 
+  // cause: 'spike' (splat) or 'fell' (off the edge). Back to the last checkpoint after a beat.
+  function startRespawn(cause, events) {
+    state.phase = 'respawning';
+    state.respawnTimer = RESPAWN_TICKS;
+    state.cause = cause;
+    state.deaths++;
+    state.players.forEach((p, i) => {
+      if (p.farting) events.push({ type: 'fartEnd', player: i });
+      p.farting = false;
+    });
+    events.push({ type: cause === 'fell' ? 'fell' : 'ouch' });
+  }
+
   function snapshot() {
     const p = raft.translation();
     const v = raft.linvel();
@@ -286,6 +303,8 @@ export function createSim(RAPIER, level = LEVELS.canal, { crew = ALL_SEATS } = {
       checkpoint: state.checkpoint,
       deaths: state.deaths,
       crew: state.crew,
+      cause: state.phase === 'respawning' ? state.cause : null,
+      respawn: state.phase === 'respawning' ? state.respawnTimer / RESPAWN_TICKS : 0, // 1 -> 0
       raft: { x: p.x, y: p.y, angle: raft.rotation(), vx: v.x, vy: v.y, av: raft.angvel() },
       players: state.players.map((pl) => ({ ...pl })),
       movers: movers.map((m) => {
@@ -300,6 +319,7 @@ export function createSim(RAPIER, level = LEVELS.canal, { crew = ALL_SEATS } = {
     if (state.phase !== 'playing' && state.phase !== 'ready') return;
     state.phase = 'respawning';
     state.respawnTimer = 1;
+    state.cause = 'manual';
     state.deaths++;
   }
 

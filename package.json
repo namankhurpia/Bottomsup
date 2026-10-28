@@ -10,7 +10,8 @@
     "sounds": "node scripts/fart-preview.js",
     "test:sim": "node scripts/sim-check.js && node scripts/autopilot.js",
     "start": "node server/main.js",
-    "test:net": "node scripts/net-test.js"
+    "test:net": "node scripts/net-test.js",
+    "test:levels": "node scripts/levels-check.js"
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "0.21.0",
