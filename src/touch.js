@@ -4,7 +4,7 @@
 // otherwise a lost finger could keep farting forever.
 
 export function createTouchControls(input) {
-  const touch = { move: 0, fart: false };
+  const touch = { walk: 0, fart: false }; // walk: -1 (screen left) .. 1 (screen right)
   input.state.touch = touch;
 
   const root = document.createElement('div');
@@ -26,12 +26,12 @@ export function createTouchControls(input) {
     const dx = Math.max(-RANGE, Math.min(RANGE, clientX - centreX));
     knob.style.transform = `translateX(${dx}px)`;
     const v = dx / RANGE;
-    // left on the stick = A (counter-clockwise, +1), right = D (clockwise, -1)
-    touch.move = Math.abs(v) < 0.25 ? 0 : -v;
+    // left on the stick walks you left on screen, like A / the left arrow
+    touch.walk = Math.abs(v) < 0.25 ? 0 : v;
   }
   function stickRelease() {
     stickId = null;
-    touch.move = 0;
+    touch.walk = 0;
     knob.style.transform = '';
     stick.classList.remove('held');
   }

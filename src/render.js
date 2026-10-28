@@ -451,23 +451,20 @@ export function createRenderer(container) {
     const tag = document.createElement('div');
     tag.className = 'name-tag';
     tag.style.setProperty('--c', hex);
-    const tagYou = document.createElement('b');
-    tagYou.textContent = 'you';
     const tagName = document.createElement('span');
-    tag.append(tagYou, tagName);
+    tag.append(tagName);
     tagLayer.append(tag);
 
     return { g, ring, arrow, body, marker, tag, tagName, hex, squash: 0, occupied: true, drop: 1, tagKey: '', label: `P${i + 1}` };
   });
 
-  // mine = this is you (online: "you" badge) or the player you're steering (solo: outline)
+  // mine = this is you (online) or the player you're steering (solo): a thin white outline
   function drawTag(c, text, mine, online) {
     const key = `${text}|${mine}|${online}`;
     if (key === c.tagKey) return;
     c.tagKey = key;
     c.tagName.textContent = text; // other people's names: text only, never HTML
     c.tag.classList.toggle('mine', mine);
-    c.tag.classList.toggle('you', mine && online);
   }
 
   // seats: null (solo / menu: everyone present, tags read P1-P4) or [{ name, occupied }]
@@ -641,6 +638,7 @@ export function createRenderer(container) {
 
   // pin each name tag just above its player's head, in screen pixels
   const head = new THREE.Vector3();
+  const hub = new THREE.Vector3();
   function placeTags() {
     for (const c of crew) {
       const on = c.tagShown && c.g.visible && raft.visible;
@@ -648,8 +646,13 @@ export function createRenderer(container) {
         c.tag.style.display = 'none';
         continue;
       }
+      // just outside the raft's edge, straight out from the player, so it never covers the deck
       c.body.getWorldPosition(head);
-      head.y += 1.25;
+      raft.getWorldPosition(hub);
+      const dx = head.x - hub.x;
+      const dz = head.z - hub.z;
+      const d = Math.hypot(dx, dz) || 1;
+      head.set(hub.x + (dx / d) * (RAFT.radius + 0.75), 0.3, hub.z + (dz / d) * (RAFT.radius + 0.75));
       head.project(camera);
       if (head.z > 1) {
         c.tag.style.display = 'none';
@@ -658,7 +661,7 @@ export function createRenderer(container) {
       c.tag.style.display = '';
       const x = ((head.x + 1) / 2) * innerWidth;
       const y = ((1 - head.y) / 2) * innerHeight;
-      c.tag.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
+      c.tag.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
     }
   }
 

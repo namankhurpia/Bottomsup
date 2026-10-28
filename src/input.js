@@ -1,6 +1,6 @@
 // Local input -> per-tick commands for all 4 players.
-// One person drives all four: 1-4 pick a player, A/D walks them around their quarter of the
-// rim, Q/E or the mouse turns them away from facing the centre (W faces the centre again),
+// One person drives all four: 1-4 pick a player, A/D (or arrows) walks them left / right on
+// screen around their slice of the rim, Q/E or the mouse turns them away from facing the centre (W faces the centre again),
 // Z/X/C/V fart for P1-P4, Space farts the selected player, F farts everyone. Hold Shift to walk/aim all four at once (easy solo: Shift + mouse
 // to steer, F to go). Gamepad N controls player N.
 // Online (setSeat(n)): you only drive seat n, and every fart key / click / pad farts it.
@@ -24,6 +24,7 @@ export function createInput({ onRespawn, onRestart, onToggleHelp, onToggleMute, 
     seat: null, // online: the only seat this browser controls
     touch: null, // phones: { move, fart } from the on-screen controls (see touch.js)
   };
+  const walkLock = Array(NUM_PLAYERS).fill(null); // per player: rim direction chosen when walking began
   const typing = (e) => e.target && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(e.target.tagName);
 
   addEventListener('keydown', (e) => {
@@ -71,9 +72,11 @@ export function createInput({ onRespawn, onRestart, onToggleHelp, onToggleMute, 
     state.group = group;
     const targets = group ? [0, 1, 2, 3] : [a];
     const move = Array(NUM_PLAYERS).fill(0);
-    const walk = (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0);
+    // walking intent on screen: -1 = left, +1 = right (keyboard, then touch / d-pad below)
+    const keyWalk = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
+    const screenWalk = Array(NUM_PLAYERS).fill(0);
     for (const i of targets) {
-      move[i] = walk; // A = counter-clockwise, D = clockwise
+      screenWalk[i] = keyWalk;
       if (keys.has('KeyQ')) state.aims[i] += AIM_SPEED * dt;
       if (keys.has('KeyE')) state.aims[i] -= AIM_SPEED * dt;
       if (keys.has('KeyW') || keys.has('ArrowUp')) state.aims[i] = FACE_CENTER;
@@ -99,7 +102,7 @@ export function createInput({ onRespawn, onRestart, onToggleHelp, onToggleMute, 
     const t = state.touch;
     if (t) {
       for (const i of online ? [a] : [0, 1, 2, 3]) {
-        if (t.move) move[i] = t.move;
+        if (t.walk) screenWalk[i] = t.walk;
         if (t.fart) fart[i] = true;
       }
     }
@@ -117,8 +120,28 @@ export function createInput({ onRespawn, onRestart, onToggleHelp, onToggleMute, 
       if (b[3] && b[3].pressed) state.aims[i] = FACE_CENTER; // Y: face the centre again
       if ((b[7] && b[7].value > 0.3) || (b[0] && b[0].pressed)) fart[i] = true;
       const held = (k) => b[k] && b[k].pressed;
-      if (held(4) || held(14)) move[i] = 1;
-      if (held(5) || held(15)) move[i] = -1;
+      if (held(14)) screenWalk[i] = -1; // d-pad: left / right on screen
+      if (held(15)) screenWalk[i] = 1;
+      if (held(4)) move[i] = 1; // bumpers: straight round the rim (counter-clockwise / clockwise)
+      if (held(5)) move[i] = -1;
+    }
+
+    // Left / right mean left / right on screen. Walking counter-clockwise (+1) moves you left
+    // on the top half of the raft but right on the bottom half, so the rim direction depends
+    // on where you stand. It's decided when you start walking and kept while you hold it, so
+    // you carry on smoothly round the side instead of bouncing back at it.
+    for (let i = 0; i < NUM_PLAYERS; i++) {
+      const h = screenWalk[i];
+      if (!h) {
+        walkLock[i] = null;
+        continue;
+      }
+      if (!walkLock[i] || walkLock[i].h !== h) {
+        const world = players[i].pos + raft.angle; // where you stand, in world angle
+        const ccwGoesLeft = Math.sin(world) > -0.05; // top half (and the very sides)
+        walkLock[i] = { h, dir: ccwGoesLeft ? -h : h };
+      }
+      move[i] = walkLock[i].dir * Math.min(1, Math.abs(h));
     }
 
     for (let i = 0; i < NUM_PLAYERS; i++) state.aims[i] = wrap(state.aims[i]);
