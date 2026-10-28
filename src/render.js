@@ -457,33 +457,47 @@ export function createRenderer(container) {
   tube.position.y = 0.26;
   deck.add(tube);
 
-  // drop-stitch floor, raised to the tube's middle so the inside looks like a tub
+  // a wooden floor of planks, raised to the tube's middle so the inside looks like a tub
   const floorCanvas = document.createElement('canvas');
-  floorCanvas.width = floorCanvas.height = 256;
+  floorCanvas.width = floorCanvas.height = 512;
   {
     const g = floorCanvas.getContext('2d');
-    g.fillStyle = '#56606d';
-    g.fillRect(0, 0, 256, 256);
-    g.fillStyle = 'rgba(0, 0, 0, 0.22)';
-    for (let y = 8; y < 256; y += 16) for (let x = (y / 16) % 2 ? 8 : 0; x < 256; x += 16) g.fillRect(x, y, 3, 3);
+    const tones = ['#b98552', '#a8743f', '#c4915c', '#ae7a45', '#bd8a55', '#a36f3c', '#c28e58'];
+    const w = 512 / 7;
+    tones.forEach((tone, i) => {
+      g.fillStyle = tone;
+      g.fillRect(i * w, 0, w, 512);
+      g.strokeStyle = 'rgba(90, 50, 20, 0.25)'; // wood grain
+      g.lineWidth = 2;
+      for (let k = 0; k < 5; k++) {
+        const x = i * w + 8 + k * (w / 5) + Math.sin(i * 3 + k) * 4;
+        g.beginPath();
+        g.moveTo(x, 0);
+        g.bezierCurveTo(x + 6, 170, x - 6, 340, x + 3, 512);
+        g.stroke();
+      }
+      g.fillStyle = 'rgba(50, 25, 8, 0.65)'; // the gap between planks
+      g.fillRect(i * w, 0, 4, 512);
+      g.fillStyle = 'rgba(60, 35, 15, 0.8)'; // nail heads
+      for (const y of [60, 452]) g.fillRect(i * w + w / 2 - 3, y, 6, 6);
+    });
   }
   const floorTex = new THREE.CanvasTexture(floorCanvas);
   floorTex.colorSpace = THREE.SRGBColorSpace;
+  floorTex.anisotropy = 4;
   const floor = shadowed(new THREE.Mesh(
     new THREE.CylinderGeometry(R - TUBE * 1.5, R - TUBE * 1.5, 0.16, 48),
-    [mat('#3c434d'), mat('#ffffff', { map: floorTex, roughness: 0.95 }), mat('#3c434d')],
+    [mat('#7a4a24'), mat('#ffffff', { map: floorTex, roughness: 0.85 }), mat('#7a4a24')],
   ));
   floor.position.y = 0.18;
   deck.add(floor);
 
-  // two inflated thwarts (cross tubes) across the middle, like a real raft
+  // inflated thwarts run from the middle to the tube along the borders between players'
+  // slices, so they show how far round the rim you can walk (built in buildZones)
   const thwartMat = mat('#e8571a', { roughness: 0.75 });
-  for (const a of [Math.PI / 4, -Math.PI / 4]) {
-    const t = shadowed(new THREE.Mesh(new THREE.CapsuleGeometry(0.15, (R - TUBE) * 2 - 0.4, 6, 12).rotateZ(Math.PI / 2), thwartMat));
-    t.position.y = 0.32;
-    t.rotation.y = a;
-    deck.add(t);
-  }
+  const thwartLen = R - TUBE * 2 + 0.05;
+  const thwartGeo = new THREE.CapsuleGeometry(0.14, thwartLen - 0.28, 6, 12).rotateZ(Math.PI / 2).translate(thwartLen / 2, 0, 0);
+  const hubGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.22, 20);
 
   // a faint wake where the raft sits in the water, and a soft dark patch under it
   const foam = new THREE.Mesh(
@@ -519,8 +533,8 @@ export function createRenderer(container) {
     zonesKey = key;
     for (const z of [...zones.children]) {
       zones.remove(z);
-      z.geometry.dispose();
-      if (z.material !== woodDark) z.material.dispose();
+      if (z.geometry !== thwartGeo && z.geometry !== hubGeo) z.geometry.dispose();
+      if (z.material !== woodDark && z.material !== thwartMat) z.material.dispose();
     }
     for (const i of crew) {
       const arc = arcFor(i, crew);
@@ -539,13 +553,17 @@ export function createRenderer(container) {
         band.position.y = y;
         zones.add(band);
       }
-      if (arc.full) continue;
-      // divider at the start of this slice
-      // a faint seam on the floor between slices
-      const spoke = new THREE.Mesh(new THREE.BoxGeometry(R - TUBE * 1.5 - 0.2, 0.02, 0.04), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.2 }));
-      spoke.position.set(Math.cos(arc.lo) * ((R - TUBE * 1.5) / 2 + 0.1), 0.27, -Math.sin(arc.lo) * ((R - TUBE * 1.5) / 2 + 0.1));
-      spoke.rotation.y = arc.lo;
-      zones.add(spoke);
+      if (arc.full) continue; // alone: the whole rim is yours, no thwart
+      // a thwart along the border where this slice starts
+      const thwart = shadowed(new THREE.Mesh(thwartGeo, thwartMat));
+      thwart.position.y = 0.32;
+      thwart.rotation.y = arc.lo;
+      zones.add(thwart);
+    }
+    if (crew.length > 1) {
+      const hub = shadowed(new THREE.Mesh(hubGeo, thwartMat));
+      hub.position.y = 0.32;
+      zones.add(hub);
     }
   }
   buildZones(ALL_SEATS);
