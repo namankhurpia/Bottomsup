@@ -27,9 +27,11 @@ export function createHud() {
     const el = document.createElement('div');
     el.className = 'player';
     el.style.setProperty('--c', color);
+    // one thing per line so nothing overlaps: name (+ a puff while farting), voice, gas bar
     el.innerHTML = `
-      <div class="row"><span class="name"><span class="dot"></span><span class="label"></span><span class="voice"></span></span><span class="status"></span></div>
-      <div class="bar"><div class="fill"></div></div>
+      <div class="top"><span class="dot"></span><span class="label"></span><span class="puff" aria-hidden="true">💨</span></div>
+      <div class="voice"></div>
+      <div class="bar"><div class="fill"></div><span class="bar-text"></span></div>
       <div class="keys"></div>`;
     $('players').appendChild(el);
     return {
@@ -37,7 +39,7 @@ export function createHud() {
       label: el.querySelector('.label'),
       voice: el.querySelector('.voice'),
       fill: el.querySelector('.fill'),
-      status: el.querySelector('.status'),
+      barText: el.querySelector('.bar-text'),
       keys: el.querySelector('.keys'),
     };
   });
@@ -82,9 +84,11 @@ export function createHud() {
       c.el.style.display = s.crew && !s.crew.includes(i) ? 'none' : ''; // only the crew's cards
       c.el.classList.toggle('active', mode === 'solo' && input.state.active === i);
       c.el.classList.toggle('farting', p.farting);
+      // out of gas: the card flashes red (CSS animation on adding the class) and stays red
+      // until the tank is back to 20% and you can fart again
       c.el.classList.toggle('empty', p.empty);
       c.fill.style.width = `${(p.gas * 100).toFixed(1)}%`;
-      c.status.textContent = p.empty ? 'EMPTY' : p.farting ? 'TOOT!' : '';
+      c.barText.textContent = p.empty ? 'EMPTY' : '';
     });
   }
 

@@ -74,4 +74,16 @@ for (const id of ['plank', 'rapids']) {
   const inside = (p) => L.water.some((r) => Math.abs(p.x - r.x) <= r.w / 2 && Math.abs(p.y - r.y) <= r.h / 2);
   check(L.checkpoints.every(inside) && inside(L.finish), `${id}: every checkpoint and the finish sit on safe water`);
 }
+// level 3's first barrier is spiky: touching it is a splat
+{
+  const sim = createSim(RAPIER, LEVELS.rapids);
+  sim.go();
+  const ev = [];
+  for (let t = 0; t < 120 && sim.snapshot().phase === 'playing'; t++) {
+    const bar = sim.snapshot().movers[0];
+    sim.debugPlace(bar.x, bar.y - 1.9, 0); // just under the bar, overlapping its spikes
+    ev.push(...sim.step([]));
+  }
+  check(ev.some((e) => e.type === 'ouch') && sim.snapshot().phase === 'respawning', 'touching the spiky barrier on level 3 is a splat');
+}
 process.exit(ok ? 0 : 1);

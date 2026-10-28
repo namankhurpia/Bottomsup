@@ -228,6 +228,24 @@ export function createRenderer(container) {
         const hub = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 1.6, 12), woodDark));
         hub.position.y = 0.4;
         g.add(log, hub);
+      } else if (m.spiky) {
+        // a spiked beam: dark red bar with steel spikes sticking out of both long sides
+        const len = Math.max(m.w, m.h);
+        const thick = Math.min(m.w, m.h);
+        const bar = new THREE.Group();
+        const beam = shadowed(new THREE.Mesh(new THREE.BoxGeometry(len, 0.6, thick), mat('#8f1d1d', { metalness: 0.3, roughness: 0.5 })));
+        beam.position.y = 0.3;
+        bar.add(beam);
+        const n = Math.floor(len / 0.45);
+        for (const side of [-1, 1]) {
+          for (let k = 0; k < n; k++) {
+            const spike = shadowed(new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.45, 6).rotateX((side * Math.PI) / 2), metal));
+            spike.position.set(-len / 2 + (k + 0.5) * (len / n), 0.35, side * (thick / 2 + 0.2));
+            bar.add(spike);
+          }
+        }
+        if (m.h > m.w) bar.rotation.y = Math.PI / 2;
+        g.add(bar);
       } else {
         const tex = barrierTex.clone();
         tex.wrapS = THREE.RepeatWrapping;

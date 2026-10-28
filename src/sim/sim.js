@@ -107,6 +107,11 @@ export function createSim(RAPIER, level = LEVELS.canal, { crew = ALL_SEATS } = {
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pose.x, pose.y).setRotation(pose.angle),
     );
     world.createCollider(RAPIER.ColliderDesc.cuboid(def.w / 2, def.h / 2).setRestitution(0.5).setFriction(0.35), body);
+    // a spiky mover: touching it is a splat, like the spike strips
+    if (def.spiky) {
+      const sensor = world.createCollider(RAPIER.ColliderDesc.cuboid(def.w / 2 + 0.2, def.h / 2 + 0.2).setSensor(true), body);
+      kinds.set(sensor.handle, { kind: 'spike', index: -1 });
+    }
     return { def, body };
   });
 

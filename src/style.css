@@ -64,16 +64,26 @@ html, body {
   box-shadow: 0 6px 20px rgba(18, 48, 74, 0.12); transition: border-color 0.15s, transform 0.15s;
 }
 .player.active { border-color: var(--c); transform: translateY(-4px); }
-.player .row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.player .name { font-weight: 800; display: flex; align-items: center; gap: 6px; }
-.player .voice { font-size: 11px; font-weight: 600; color: var(--muted); }
-.player .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
-.player .status { font-size: 11px; font-weight: 800; color: var(--muted); letter-spacing: 0.5px; }
-.player.farting .status { color: #6b8e23; }
-.player.empty .status { color: #d64545; }
-.player .bar { height: 8px; border-radius: 6px; background: rgba(18, 48, 74, 0.1); margin-top: 6px; overflow: hidden; }
-.player .fill { height: 100%; background: linear-gradient(90deg, #a6c25a, #d7e38c); border-radius: 6px; }
-.player.empty .fill { background: #e88; }
+.player .top { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 800; }
+.player .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player .dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
+.player .puff { flex: none; width: 18px; text-align: center; font-size: 13px; opacity: 0; transform: scale(0.5); transition: opacity 0.1s, transform 0.1s; }
+.player.farting .puff { opacity: 1; transform: scale(1); animation: puff 0.3s ease-in-out infinite alternate; }
+@keyframes puff { to { transform: scale(1.25) translateX(2px); } }
+.player .voice { font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.player .bar { position: relative; height: 10px; border-radius: 6px; background: rgba(18, 48, 74, 0.1); margin-top: 6px; overflow: hidden; }
+.player .fill { height: 100%; background: linear-gradient(90deg, #a6c25a, #d7e38c); border-radius: 6px; transition: box-shadow 0.15s; }
+.player.farting .fill { box-shadow: 0 0 8px 2px rgba(166, 194, 90, 0.9); }
+.player .bar-text { position: absolute; inset: 0; display: grid; place-items: center; font: 900 8px/1 ui-rounded, system-ui, sans-serif; letter-spacing: 1.5px; color: #fff; }
+
+/* out of gas: one soft red pulse, then a light red card until you can fart again */
+.player.empty { background: #fdecec; border-color: #ef4444; animation: empty-pulse 0.5s ease-out 1; }
+@keyframes empty-pulse { 0% { background: #fca5a5; transform: scale(1.04); } 100% { background: #fdecec; transform: scale(1); } }
+.player.active.empty { transform: translateY(-4px); }
+.player.empty .dot { box-shadow: 0 0 0 2px #fff, 0 0 0 3px #ef4444; }
+.player.empty .bar { background: rgba(239, 68, 68, 0.15); }
+.player.empty .fill { background: #ef4444; }
+.player.empty .bar-text { color: #b91c1c; }
 .player .keys { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
 kbd {
@@ -341,7 +351,7 @@ body.touch.phase-lobby .players { display: none; }
   body.touch .status-line { margin: 2px 0 6px; font-size: 13px; }
   body.touch #start { padding: 8px; }
   body.touch .players { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  body.touch .player .voice, body.touch .player .status { display: none; }
+  body.touch .player .voice { display: none; }
   body.touch .stats { gap: 8px; padding: 6px 10px; }
   body.touch .title { padding: 6px 10px; font-size: 15px; }
   body.touch .start-lights { top: 130px; }

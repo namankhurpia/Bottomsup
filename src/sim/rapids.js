@@ -64,9 +64,9 @@ export const RAPIDS = {
   finish: { x: 14, y: 38, w: 12, h: 3 },
 
   movers: [
-    { type: 'slider', w: 4, h: 1, from: { x: -3.5, y: 20 }, to: { x: 3.5, y: 20 }, period: 4.5 },
+    { type: 'slider', w: 3.2, h: 1, from: { x: -3.5, y: 20 }, to: { x: 3.5, y: 20 }, period: 6, spiky: true }, // touch it and you splat; slip past by the wall it's swinging away from
     { type: 'rotor', w: 7, h: 0.8, x: 0, y: 38, speed: 1.0 },
-    { type: 'rotor', w: 8, h: 0.8, x: 28, y: 66, speed: 1.2 },
+    { type: 'rotor', w: 6.4, h: 0.8, x: 28, y: 66, speed: 0.9 }, // wait for it to lie along the canal
     { type: 'slider', w: 1, h: 4.5, from: { x: 46, y: 62.5 }, to: { x: 46, y: 69.5 }, period: 3.6 },
     { type: 'slider', w: 1, h: 4, from: { x: 52, y: 4 }, to: { x: 52, y: 12 }, period: 4 },
     { type: 'rotor', w: 7, h: 0.8, x: 32, y: 8, speed: 1.1 },
