@@ -273,33 +273,12 @@ body.mode-menu.page-levels #levels-page, body.mode-menu.page-history #history-pa
 .nav-row button { padding: 7px 12px; font-size: 13px; }
 .board-head select { font: inherit; font-weight: 800; font-size: 15px; border: none; background: transparent; color: var(--ink); padding: 0; cursor: pointer; }
 
-.level-list { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 10px; }
-.level-list li {
-  display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 12px;
-  border-radius: 14px; background: rgba(255, 255, 255, 0.75); border: 2px solid rgba(18, 48, 74, 0.1);
-}
-.level-list li.locked { opacity: 0.55; }
-.level-list li.cleared { border-color: #4ade80; }
-.level-list .num {
-  width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-weight: 900; font-size: 18px;
-  background: #ff8a3d; color: #fff;
-}
-.level-list li.locked .num { background: #9aa8b5; }
-.level-list .info b { display: block; font-size: 16px; }
-.level-list .info p { margin: 2px 0 0; font-size: 12px; color: var(--muted); line-height: 1.35; }
-.level-list .state { font-size: 12px; font-weight: 800; margin-top: 4px; }
-.level-list .play { padding: 7px 12px; font-size: 13px; }
 
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 8px 0 12px; }
 .stat { background: rgba(255, 255, 255, 0.75); border-radius: 12px; padding: 10px 12px; }
 .stat .v { font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
 .stat .k { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
 
-.level-pick { display: grid; gap: 6px; margin: 6px 0 10px; }
-.level-pick button { text-align: left; padding: 8px 10px; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
-.level-pick button.on { border-color: #ff8a3d; background: #fff4ec; }
-.level-pick button:disabled { cursor: not-allowed; }
-.level-pick .lock { color: var(--muted); font-size: 11px; }
 
 /* --- phone controls ------------------------------------------------------------------ */
 .touch-controls { display: none; }
@@ -345,9 +324,6 @@ body.touch.phase-lobby .players { display: none; }
   body.touch .seats { grid-template-columns: 1fr 1fr; gap: 4px; margin: 6px 0; }
   body.touch .seats li { padding: 4px 8px; font-size: 13px; }
   body.touch .seats .tag { display: none; }
-  body.touch .level-pick { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 6px; }
-  body.touch .level-pick button { padding: 4px 8px; font-size: 12px; }
-  body.touch .level-pick .lock { display: none; }
   body.touch .status-line { margin: 2px 0 6px; font-size: 13px; }
   body.touch #start { padding: 8px; }
   body.touch .players { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -359,9 +335,70 @@ body.touch.phase-lobby .players { display: none; }
 
 /* minimal controls reminder while playing (keyboard players; H still opens the full help) */
 .controls-hint {
-  position: absolute; right: 16px; bottom: 128px; display: grid; gap: 6px; padding: 8px 10px;
+  position: absolute; left: 16px; bottom: 128px; display: grid; gap: 6px; padding: 8px 10px;
   border-radius: 12px; background: rgba(255, 255, 255, 0.55); font-size: 12px; font-weight: 700;
   color: var(--muted); opacity: 0.85;
 }
 .controls-hint kbd { margin-right: 4px; }
 body.mode-menu .controls-hint, body.touch .controls-hint, body.phase-results .controls-hint { display: none; }
+
+/* --- journey map ------------------------------------------------------------------------ */
+.journey { position: relative; margin: 6px auto; max-width: 100%; }
+.journey svg { position: absolute; inset: 0; overflow: visible; }
+.journey .river { fill: none; stroke: #7cc8ef; stroke-width: 16; stroke-linecap: round; opacity: 0.9; }
+.journey .river-flow {
+  fill: none; stroke: #fff; stroke-width: 2.5; stroke-dasharray: 2 10; stroke-linecap: round; opacity: 0.9;
+  animation: river-flow 1.6s linear infinite;
+}
+@keyframes river-flow { to { stroke-dashoffset: -24; } }
+.journey .stop {
+  position: absolute; transform: translate(-50%, -50%); width: 46px; height: 46px; padding: 0; border: none;
+  background: none; display: block; pointer-events: auto; font: inherit; color: inherit; box-shadow: none;
+}
+.journey button.stop { cursor: pointer; }
+.journey button.stop:hover:not(:disabled) { transform: translate(-50%, -50%) scale(1.08); box-shadow: none; }
+.journey .disc {
+  display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; font-weight: 900; font-size: 18px;
+  background: #fff; color: var(--ink); border: 3px solid #ff8a3d; box-shadow: 0 4px 10px rgba(18, 48, 74, 0.2);
+}
+.journey .done .disc { background: #22c55e; border-color: #15803d; color: #fff; }
+.journey .locked .disc { background: #e3e8ee; border-color: #b8c2cd; color: #8494a5; font-size: 15px; }
+.journey .soon .disc { background: rgba(255, 255, 255, 0.6); border: 3px dashed #b8c2cd; color: #8494a5; }
+.journey .here .disc { box-shadow: 0 0 0 5px rgba(255, 138, 61, 0.35), 0 4px 10px rgba(18, 48, 74, 0.25); animation: here-pulse 1.6s ease-in-out infinite; }
+@keyframes here-pulse { 50% { box-shadow: 0 0 0 10px rgba(255, 138, 61, 0.12), 0 4px 10px rgba(18, 48, 74, 0.25); } }
+.journey .tick {
+  position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+  background: #fff; color: #15803d; font-size: 11px; font-weight: 900; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+/* the little raft bobbing on the level you're on */
+.journey .raft-marker {
+  position: absolute; left: 50%; top: -20px; width: 26px; height: 14px; margin-left: -13px; border-radius: 50%;
+  background: radial-gradient(ellipse at center, #a8743f 0 38%, #ff6a13 40% 100%); border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); animation: raft-bob 1.4s ease-in-out infinite;
+}
+@keyframes raft-bob { 50% { transform: translateY(-3px) rotate(-4deg); } }
+.journey .label {
+  position: absolute; top: 50%; transform: translateY(-50%); white-space: nowrap; text-align: left;
+  display: flex; flex-direction: column; line-height: 1.2; padding: 2px 6px; border-radius: 8px; background: rgba(255, 255, 255, 0.7);
+}
+.journey .label b { font-size: 13px; font-weight: 800; color: var(--ink); }
+.journey .label small { font-size: 11px; color: var(--muted); font-weight: 600; }
+.journey .here .label small { color: #e5702a; font-weight: 800; }
+.journey .locked .label b { color: #8494a5; }
+.journey-down .left .label { left: 54px; }
+.journey-down .right .label { right: 54px; text-align: right; align-items: flex-end; }
+.journey-across .label { top: auto; bottom: auto; left: 50%; transform: translateX(-50%); top: 52px; align-items: center; text-align: center; }
+.journey-across .right .label { top: auto; bottom: 52px; }
+
+.pick-hint { text-transform: none; letter-spacing: 0; font-weight: 600; }
+body.touch #lobby .journey { margin: 2px auto 4px; }
+
+.levels-layout { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; justify-content: center; margin: 8px 0; }
+.level-detail { flex: 1 1 200px; min-width: 200px; background: rgba(255, 255, 255, 0.75); border-radius: 14px; padding: 12px 14px; }
+.level-detail h3 { margin: 0 0 4px; font-size: 18px; font-weight: 900; }
+.level-detail p { margin: 0 0 8px; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.level-detail .state { font-size: 13px; font-weight: 800; margin-bottom: 10px; }
+.level-detail button { width: 100%; }
+
+.journey-across .label b { font-size: 11px; }
+.journey-across .label small { font-size: 10px; }

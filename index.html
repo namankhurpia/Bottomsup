@@ -58,7 +58,10 @@
           <h2>Levels</h2>
         </div>
         <p class="small" id="levels-who"></p>
-        <ol id="level-list" class="level-list"></ol>
+        <div class="levels-layout">
+          <div id="levels-map"></div>
+          <div id="level-detail" class="level-detail"></div>
+        </div>
         <p class="small">To race a level with friends, create a room and the host picks it in the lobby. Finishing a level (with any number of players) unlocks the next one for everyone in that crew.</p>
       </div>
     </section>
@@ -86,8 +89,8 @@
         <div id="room-code" class="room-code">----</div>
         <p class="small">Send this code to up to 3 friends. The raft is split evenly between everyone on it, and the host can start with 1 to 4 players.</p>
         <ol id="seats" class="seats"></ol>
-        <div class="code-label">Level</div>
-        <div id="level-pick" class="level-pick"></div>
+        <div class="code-label">Your journey <span class="pick-hint">(host taps a level)</span></div>
+        <div id="level-pick"></div>
         <p id="lobby-status" class="status-line"></p>
         <button id="start" class="primary" disabled>Start race</button>
         <p class="small hint">While you wait, paddle around the pond: <kbd>Space</kbd> to fart, <kbd>A</kbd> <kbd>D</kbd> or <kbd>←</kbd> <kbd>→</kbd> to walk left / right.</p>

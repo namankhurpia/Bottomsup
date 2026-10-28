@@ -13,6 +13,7 @@ import { createHud, fmtMs, fmtTime } from './hud.js';
 import { createNet } from './net.js';
 import { createStartLights } from './lights.js';
 import { createTouchControls } from './touch.js';
+import { renderJourney } from './journey.js';
 
 await RAPIER.init();
 
@@ -45,6 +46,7 @@ function setBodyClass(prefix, value) {
 function setMode(m) {
   mode = m;
   lights.hide();
+  view.setFocusShift(0);
   if (touchControls) touchControls.releaseAll();
   setBodyClass('mode-', m);
   if (m !== 'online') setBodyClass('phase-', null);
@@ -277,8 +279,11 @@ function applyRoom(room) {
   view.setSeats(room.seats.map((s) => s && { name: s.name, occupied: true }));
   hud.setPlayers(room.seats, online.seat);
   setBodyClass('phase-', room.phase);
+  // on phones the lobby card covers the top of the screen; look ahead so your raft shows below it
+  view.setFocusShift(isTouch && room.phase === 'lobby' ? 9 : 0);
   if (room.phase === 'countdown' && was !== 'countdown') input.setSeat(online.seat); // everyone starts facing the centre
   if (room.phase === 'lobby') {
+    if (was !== 'lobby') loadMyProgress(); // just arrived, or back from a race
     if (was && was !== 'lobby') hud.hideMessage(), lights.hide();
     renderLobby(room);
   }
@@ -288,6 +293,16 @@ function applyRoom(room) {
     renderResults(room);
   }
   if (room.phase === 'results') renderResultButtons(room);
+}
+
+// your own cleared levels (for the ticks and best times on the lobby map)
+async function loadMyProgress() {
+  const name = typedName() || (online.room && online.room.seats[online.seat] && online.room.seats[online.seat].name);
+  if (!name) return;
+  try {
+    online.cleared = (await (await fetch(`/api/progress?name=${encodeURIComponent(name)}`)).json()).cleared;
+    if (online.room && online.room.phase === 'lobby') renderLobby(online.room);
+  } catch {}
 }
 
 function renderLobby(room) {
@@ -320,24 +335,17 @@ function renderLobby(room) {
   renderLevelPick(room, isHost);
 }
 
-// lobby level picker: the host chooses; locked levels show what unlocks them
+// lobby journey map: the host taps a stop to choose the level; everyone sees the raft move there
 function renderLevelPick(room, isHost) {
-  const box = $('level-pick');
-  box.textContent = '';
-  RACE_LEVELS.forEach((id, i) => {
-    const L = LEVELS[id];
-    const open = room.unlocked.includes(id);
-    const b = document.createElement('button');
-    b.className = id === room.choice ? 'on' : '';
-    b.disabled = !isHost || !open;
-    const name = document.createElement('span');
-    name.textContent = `${L.number}. ${L.name}`;
-    const note = document.createElement('span');
-    note.className = 'lock';
-    note.textContent = open ? (id === room.choice ? 'selected' : '') : `🔒 finish level ${LEVELS[RACE_LEVELS[i - 1]].number}`;
-    b.append(name, note);
-    b.onclick = () => net.send({ t: 'level', level: id });
-    box.append(b);
+  renderJourney($('level-pick'), {
+    levels: RACE_LEVELS.map((id) => LEVELS[id]),
+    unlocked: room.unlocked,
+    cleared: online.cleared || {},
+    fmt: fmtMs,
+    current: room.choice,
+    pickable: isHost,
+    onPick: (id) => net.send({ t: 'level', level: id }),
+    dir: isTouch ? 'across' : 'down',
   });
 }
 
@@ -550,37 +558,34 @@ async function renderLevelsPage() {
   try {
     if (name) prog = await (await fetch(`/api/progress?name=${encodeURIComponent(name)}`)).json();
   } catch {}
-  const list = $('level-list');
-  list.textContent = '';
-  RACE_LEVELS.forEach((id, i) => {
-    const L = LEVELS[id];
-    const open = prog.unlocked.includes(id);
-    const done = prog.cleared[id];
-    const li = document.createElement('li');
-    li.className = done ? 'cleared' : open ? '' : 'locked';
-    const num = document.createElement('div');
-    num.className = 'num';
-    num.textContent = open ? String(L.number) : '🔒';
-    const info = document.createElement('div');
-    info.className = 'info';
-    const title = document.createElement('b');
-    title.textContent = L.name;
+  // the journey: tap a stop to see it; the raft starts on the furthest level you've reached
+  const levels = RACE_LEVELS.map((id) => LEVELS[id]);
+  let selected = prog.unlocked[prog.unlocked.length - 1];
+  const draw = () => {
+    renderJourney($('levels-map'), {
+      levels, unlocked: prog.unlocked, cleared: prog.cleared, current: selected, pickable: true, fmt: fmtMs,
+      onPick: (id) => ((selected = id), draw()),
+    });
+    const L = LEVELS[selected];
+    const done = prog.cleared[selected];
+    const box = $('level-detail');
+    box.textContent = '';
+    const title = document.createElement('h3');
+    title.textContent = `${L.number}. ${L.name}`;
     const blurb = document.createElement('p');
     blurb.textContent = `${L.blurb} Par ${fmtPar(L.par)}.`;
     const state = document.createElement('div');
     state.className = 'state';
     state.textContent = done
       ? `✓ Cleared · best ${fmtMs(done.best_ms)} · ${done.best_points} pts · ${done.races} race${done.races === 1 ? '' : 's'}`
-      : open ? 'Unlocked: not finished yet' : `Finish level ${LEVELS[RACE_LEVELS[i - 1]].number} to unlock`;
-    info.append(title, blurb, state);
+      : 'Not finished yet';
     const play = document.createElement('button');
-    play.className = 'play';
+    play.className = 'primary';
     play.textContent = 'Practise solo';
-    play.disabled = !open;
-    play.onclick = () => startSolo(id);
-    li.append(num, info, play);
-    list.append(li);
-  });
+    play.onclick = () => startSolo(selected);
+    box.append(title, blurb, state, play);
+  };
+  draw();
 }
 
 let historyScope = 'mine';

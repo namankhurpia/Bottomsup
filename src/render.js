@@ -691,6 +691,7 @@ export function createRenderer(container) {
   const waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   let time = 0;
   let firstFrame = true;
+  let focusShift = 0; // metres ahead of the raft to centre the view on (phones: room for the lobby card)
   const tmp = new THREE.Vector3();
 
   function render(prev, curr, alpha, frameDt, input) {
@@ -799,7 +800,7 @@ export function createRenderer(container) {
     flash.material.opacity = curr.phase === 'respawning' ? 0.35 + 0.3 * Math.sin(time * 30) : 0;
 
     // camera: follow with a little look-ahead in the direction of travel
-    const look = toWorld(rx + curr.raft.vx * 0.5, ry + curr.raft.vy * 0.5);
+    const look = toWorld(rx + curr.raft.vx * 0.5, ry + curr.raft.vy * 0.5 + focusShift);
     const k = firstFrame ? 1 : 1 - Math.exp(-frameDt * 4);
     firstFrame = false;
     camTarget.lerp(look, k);
@@ -868,6 +869,7 @@ export function createRenderer(container) {
     screenToWorld,
     setLevel,
     setSeats,
+    setFocusShift: (m) => (focusShift = m),
     snapCamera: () => (firstFrame = true),
     shake: (amount = 0.6) => (shake = amount),
   };
