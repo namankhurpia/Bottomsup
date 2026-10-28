@@ -207,3 +207,7 @@ input {
   .room-code { font-size: 40px; }
   .landing-card h1 { font-size: 32px; }
 }
+
+.tabs { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.tabs button { padding: 5px 10px; font-size: 12px; border-radius: 999px; }
+.tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }

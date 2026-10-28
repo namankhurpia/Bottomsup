@@ -38,7 +38,8 @@ export async function startServer({
       if (url.pathname === '/api/health') return json(res, { ok: true, rooms: rooms.rooms.size });
       if (url.pathname === '/api/leaderboard') {
         const level = LEVELS[url.searchParams.get('level')] ? url.searchParams.get('level') : 'canal';
-        return json(res, { level, top: db.leaderboard(level, 20), recent: db.recentGames(15) });
+        const crew = Math.min(4, Math.max(1, Number(url.searchParams.get('crew')) || 4));
+        return json(res, { level, crew, top: db.leaderboard(level, crew, 20), recent: db.recentGames(15) });
       }
       // static files from the Vite build, falling back to index.html
       let file = normalize(join(root, decodeURIComponent(url.pathname)));

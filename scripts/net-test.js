@@ -1,5 +1,5 @@
 // End-to-end multiplayer test: a real server, 4 WebSocket clients, physics sped up 10x.
-// Covers rooms, the 4-player start rule, host-only actions, disconnect-while-farting,
+// Covers rooms, starting with 1-4 players, host-only actions, disconnect-while-farting,
 // rejoin, a full race driven by the autopilot over the network, score saving, the
 // leaderboard API and room cleanup.
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -67,8 +67,21 @@ try {
     x.send({ t: 'join', name, code: a.code });
     await x.waitFor((m) => m.t === 'welcome');
   }
-  a.send({ t: 'start' });
-  check((await a.waitFor((m) => m.t === 'error')).code === 'need-4', 'host cannot start with 3 players');
+  await a.waitFor((m) => m.t === 'snap' && m.s.crew.join() === '0,1,2', 3000, 'lobby crew of 3');
+  check(true, 'lobby raft re-splits between the 3 seated players');
+
+  // a lone player can start a race: crew of 1
+  const f = client('F');
+  await f.open;
+  f.send({ t: 'create', name: 'Solo' });
+  await f.waitFor((m) => m.t === 'welcome');
+  f.send({ t: 'start' });
+  const cd = await f.waitFor((m) => m.t === 'room' && m.room.phase === 'countdown', 3000, 'solo countdown');
+  const soloSnap = await f.waitFor((m) => m.t === 'snap' && m.phase === 'countdown', 3000, 'solo snap');
+  check(cd.room.level === 'canal' && soloSnap.s.crew.join() === '0', 'host can start alone: race with a crew of 1');
+  f.send({ t: 'lobby' });
+  await f.waitFor((m) => m.t === 'room' && m.room.phase === 'lobby', 3000, 'solo back to lobby');
+  await f.close();
 
   d.send({ t: 'join', name: 'Dan', code: a.code });
   await d.waitFor((m) => m.t === 'welcome');
@@ -121,10 +134,12 @@ try {
   const res = await a.waitFor((m) => m.t === 'room' && m.room.phase === 'results', 60000, 'results');
   const r = res.room.result;
   console.log(`     race finished: ${(r.timeMs / 1000).toFixed(1)} s, ${r.points} points, rank ${r.rank}/${r.of}, ${r.deaths} splats`);
-  check(r.points > 0 && r.rank === 1 && r.players.join() === 'bAnn/b,Bob,Cat,Dan', 'result saved with points, rank and all 4 names');
+  check(r.points > 0 && r.rank === 1 && r.crewSize === 4 && r.players.join() === 'bAnn/b,Bob,Cat,Dan', 'result saved with points, rank, crew size and all 4 names');
 
-  const lb = await (await fetch(`http://127.0.0.1:${server.port}/api/leaderboard?level=canal`)).json();
+  const lb = await (await fetch(`http://127.0.0.1:${server.port}/api/leaderboard?level=canal&crew=4`)).json();
   check(lb.top.length === 1 && lb.top[0].points === r.points && !!Date.parse(lb.top[0].finished_at), 'leaderboard API returns the game with its date/time');
+  const lb1 = await (await fetch(`http://127.0.0.1:${server.port}/api/leaderboard?level=canal&crew=1`)).json();
+  check(lb1.top.length === 0, '4-player games stay off the solo leaderboard');
 
   a.inbox.length = 0;
   a.send({ t: 'lobby' });

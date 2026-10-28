@@ -6,7 +6,8 @@
 //          facing the centre, bum over the water, so the fart pushes the raft straight through
 //          its middle (no spin). Turning away adds spin.
 //   fart = true while the player is holding their fart button
-//   move = -1..1, walk clockwise / counter-clockwise along your quarter of the rim
+//   move = -1..1, walk clockwise / counter-clockwise along your slice of the rim
+// The crew (which seats are playing, 1-4 of them) splits the rim evenly; see arcFor().
 // step() returns the events that happened this tick (for sound / HUD).
 
 import { LEVELS } from './levels.js';
@@ -24,16 +25,35 @@ export const RAFT = {
   angularDamping: 1.6,
 };
 
-// Each player owns a quarter of the rim, in raft-local angles (0 = raft right, 90 = raft front):
-// P1 0-90 (front-right), P2 90-180 (front-left), P3 180-270 (back-left), P4 270-360 (back-right).
-// They walk freely inside it. Where you stand is your lever: at the side your fart spins the
-// raft, at the front or back it drives straight.
+// The rim is split evenly between whoever is playing, in raft-local angles (0 = raft right,
+// 90 = raft front). Players walk freely inside their slice. Where you stand is your lever: at
+// the side your fart spins the raft, at the front or back it drives straight.
+//   1 player:  the whole rim, starting at the back
+//   2 players: right half (-90..90) and left half (90..270)
+//   3 players: 120 degrees each: front-right, front-left, back
+//   4 players: quarters: front-right, front-left, back-left, back-right
 export const WALK_SPEED = 1.8;   // rad/s along the rim
+export const ALL_SEATS = [0, 1, 2, 3];
 const ARC_MARGIN = 0.3;          // keeps neighbours from standing inside each other at the borders
+const ARC_BASE = { 1: -Math.PI / 2, 2: -Math.PI / 2, 3: -Math.PI / 6, 4: 0 };
+// Fart power per player by crew size. A full crew usually has ~2 people able to push in any
+// direction; with bigger slices it's often just one, so smaller crews push harder each.
+export const CREW_THRUST = { 1: 1.4, 2: 1.35, 3: 1.4, 4: 1 };
 
-export function arcOf(i) {
-  const lo = (i * Math.PI) / 2;
-  return { lo, hi: lo + Math.PI / 2, min: lo + ARC_MARGIN, max: lo + Math.PI / 2 - ARC_MARGIN, mid: lo + Math.PI / 4 };
+// seat's slice of the rim for this crew (seats in play, ascending), or null if not playing
+export function arcFor(seat, crew = ALL_SEATS) {
+  const n = crew.length;
+  const k = crew.indexOf(seat);
+  if (k === -1) return null;
+  const span = (2 * Math.PI) / n;
+  const lo = ARC_BASE[n] + k * span;
+  if (n === 1) return { lo, hi: lo + span, full: true, start: -Math.PI / 2 };
+  return { lo, hi: lo + span, full: false, min: lo + ARC_MARGIN, max: lo + span - ARC_MARGIN, start: lo + span / 2 };
+}
+
+export function cleanCrew(crew) {
+  const c = [...new Set((crew || ALL_SEATS).filter((i) => Number.isInteger(i) && i >= 0 && i < NUM_PLAYERS))].sort();
+  return c.length ? c : [0];
 }
 
 // rim angle -> raft-local position
@@ -54,7 +74,7 @@ export const GAS = {
 
 const RESPAWN_TICKS = 50;
 
-export function createSim(RAPIER, level = LEVELS.canal) {
+export function createSim(RAPIER, level = LEVELS.canal, { crew = ALL_SEATS } = {}) {
   const world = new RAPIER.World({ x: 0, y: 0 });
   world.timestep = DT;
 
@@ -109,11 +129,25 @@ export function createSim(RAPIER, level = LEVELS.canal) {
     checkpoint: 0,
     respawnTimer: 0,
     deaths: 0,
-    players: Array.from({ length: NUM_PLAYERS }, (_, i) => newPlayer(i)),
+    crew: cleanCrew(crew),
+    players: [],
   };
+  state.players = Array.from({ length: NUM_PLAYERS }, (_, i) => newPlayer(i));
 
   function newPlayer(i) {
-    return { pos: arcOf(i).mid, aim: FACE_CENTER, farting: false, gas: 1, burst: 0, idleTicks: 0, empty: false };
+    const arc = arcFor(i, state.crew);
+    return { pos: arc ? arc.start : 0, aim: FACE_CENTER, farting: false, gas: 1, burst: 0, idleTicks: 0, empty: false };
+  }
+
+  // Change who is playing (lobby: people join and leave). Everyone gets their new slice's start spot.
+  function setCrew(next) {
+    const c = cleanCrew(next);
+    if (c.join() === state.crew.join()) return [];
+    const events = [];
+    state.players.forEach((p, i) => p.farting && events.push({ type: 'fartEnd', player: i }));
+    state.crew = c;
+    state.players = Array.from({ length: NUM_PLAYERS }, (_, i) => newPlayer(i));
+    return events;
   }
 
   function placeAtCheckpoint() {
@@ -141,13 +175,16 @@ export function createSim(RAPIER, level = LEVELS.canal) {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
 
+    const boost = CREW_THRUST[state.crew.length];
     state.players.forEach((p, i) => {
+      const arc = arcFor(i, state.crew);
+      if (!arc) return; // not playing this round
       const cmd = cmds[i] || { aim: p.aim, fart: false };
       if (Number.isFinite(cmd.aim)) p.aim = cmd.aim;
       if (cmd.move) {
-        const arc = arcOf(i);
         const move = Math.max(-1, Math.min(1, cmd.move));
-        p.pos = Math.max(arc.min, Math.min(arc.max, p.pos + move * WALK_SPEED * DT));
+        const next = p.pos + move * WALK_SPEED * DT;
+        p.pos = arc.full ? Math.atan2(Math.sin(next), Math.cos(next)) : Math.max(arc.min, Math.min(arc.max, next));
       }
 
       const active = canAct && cmd.fart && !p.empty && p.gas > 0;
@@ -165,7 +202,7 @@ export function createSim(RAPIER, level = LEVELS.canal) {
       p.farting = active;
 
       if (active) {
-        const force = p.burst > 0 ? GAS.burstThrust : GAS.thrust;
+        const force = (p.burst > 0 ? GAS.burstThrust : GAS.thrust) * boost;
         if (p.burst > 0) p.burst--;
         p.idleTicks = 0;
         p.gas -= GAS.drainPerSec * DT;
@@ -248,6 +285,7 @@ export function createSim(RAPIER, level = LEVELS.canal) {
       timeTicks: state.timeTicks,
       checkpoint: state.checkpoint,
       deaths: state.deaths,
+      crew: state.crew,
       raft: { x: p.x, y: p.y, angle: raft.rotation(), vx: v.x, vy: v.y, av: raft.angvel() },
       players: state.players.map((pl) => ({ ...pl })),
       movers: movers.map((m) => {
@@ -292,7 +330,7 @@ export function createSim(RAPIER, level = LEVELS.canal) {
     raft.setAngvel(0, true);
   }
 
-  return { level, step, snapshot, respawn, restart, go, free, debugPlace };
+  return { level, step, snapshot, respawn, restart, go, free, setCrew, debugPlace };
 }
 
 export function moverPose(def, t) {

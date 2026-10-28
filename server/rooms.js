@@ -1,5 +1,6 @@
 // Rooms: a 4-digit code, 4 seats, one authoritative sim.
 // Phases: lobby (practice pond, anyone can paddle) -> countdown -> race -> results -> (race again | lobby)
+// The host can start with 1 to 4 players; the raft's rim is split evenly between them.
 
 import { randomBytes } from 'node:crypto';
 import { createSim, DT, NUM_PLAYERS, TICK_RATE } from '../src/sim/sim.js';
@@ -31,7 +32,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
       this.phase = 'lobby';
       this.countdown = 0;
       this.levelId = 'pond';
-      this.sim = createSim(RAPIER, LEVELS.pond);
+      this.sim = createSim(RAPIER, LEVELS.pond, { crew: [] }); // re-split as people sit down
       this.events = [];
       this.ticks = 0;
       this.emptySince = null;
@@ -57,7 +58,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
       const token = randomBytes(12).toString('hex');
       this.seats[seat] = { name, token, ws, connected: true, cmd: IDLE(), lastInput: 0, leftAt: null };
       this.emptySince = null;
-      this.broadcastRoom();
+      this.seatsChanged();
       return { seat, token };
     }
 
@@ -86,8 +87,18 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
       this.disconnect(seat, ws);
       if (this.phase === 'lobby') {
         this.seats[seat] = null;
-        this.broadcastRoom();
+        this.seatsChanged();
       }
+    }
+
+    get seated() {
+      return this.seats.flatMap((s, i) => (s ? [i] : []));
+    }
+
+    // Someone sat down or left. In the pond the raft re-splits between whoever is on it.
+    seatsChanged() {
+      if (this.phase === 'lobby') this.events.push(...this.sim.setCrew(this.seated));
+      this.broadcastRoom();
     }
 
     input(seat, msg) {
@@ -103,11 +114,12 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
       };
     }
 
-    // host: start (or restart) the race. Needs all 4 seated and connected.
+    // host: start (or restart) the race with whoever is here, 1 to 4 players.
+    // Anyone seated but disconnected gives up their seat; the crew is everyone left.
     start(seat) {
       if (seat !== this.hostSeat) return { error: 'not-host' };
       if (this.phase !== 'lobby' && this.phase !== 'results') return { error: 'in-progress' };
-      if (this.connectedCount < NUM_PLAYERS) return { error: 'need-4' };
+      this.seats = this.seats.map((s) => (s && !s.connected ? null : s));
       this.load(RACE_LEVELS[0]);
       this.phase = 'countdown';
       this.countdown = COUNTDOWN_TICKS;
@@ -119,10 +131,10 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
     // host: back to the practice pond (also aborts a race)
     toLobby(seat) {
       if (seat !== this.hostSeat) return { error: 'not-host' };
-      this.load('pond');
-      this.phase = 'lobby';
       // anyone who left during the race gives up their seat now
       this.seats = this.seats.map((s) => (s && !s.connected ? null : s));
+      this.load('pond');
+      this.phase = 'lobby';
       this.broadcastRoom();
       return {};
     }
@@ -134,7 +146,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
     load(levelId) {
       this.sim.free();
       this.levelId = levelId;
-      this.sim = createSim(RAPIER, LEVELS[levelId]);
+      this.sim = createSim(RAPIER, LEVELS[levelId], { crew: this.seated });
       this.events = [];
       for (const s of this.seats) if (s) s.cmd = IDLE();
     }
@@ -172,15 +184,17 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
       const level = LEVELS[this.levelId];
       const timeMs = Math.round((timeTicks * 1000) / TICK_RATE);
       const points = pointsFor(level, timeMs);
-      const players = this.seats.map((s) => (s ? s.name : '?'));
-      const deaths = this.sim.snapshot().deaths;
+      const snap = this.sim.snapshot();
+      const players = snap.crew.map((i) => (this.seats[i] ? this.seats[i].name : '?'));
+      const deaths = snap.deaths;
+      const crewSize = players.length;
       const saved = db.saveGame({
-        level: level.id, room: this.code, players, timeMs, points, deaths,
+        level: level.id, room: this.code, players, crewSize, timeMs, points, deaths,
         startedAt: this.startedAt || new Date().toISOString(), finishedAt: new Date().toISOString(),
       });
       this.phase = 'results';
-      this.lastResult = { level: level.id, levelName: level.name, players, timeMs, points, deaths, ...saved };
-      log(`room ${this.code} finished ${level.id} in ${timeMs} ms (${points} pts, rank ${saved.rank})`);
+      this.lastResult = { level: level.id, levelName: level.name, players, crewSize, timeMs, points, deaths, ...saved };
+      log(`room ${this.code} finished ${level.id} with ${crewSize} in ${timeMs} ms (${points} pts, rank ${saved.rank})`);
       this.broadcastRoom();
     }
 
@@ -227,7 +241,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
           }
           return s;
         });
-        if (changed) room.broadcastRoom();
+        if (changed) room.seatsChanged();
       }
     }
   }
@@ -245,7 +259,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
 function compact(s) {
   const r = (v) => Math.round(v * 1000) / 1000;
   return {
-    tick: s.tick, phase: s.phase, timeTicks: s.timeTicks, checkpoint: s.checkpoint, deaths: s.deaths,
+    tick: s.tick, phase: s.phase, timeTicks: s.timeTicks, checkpoint: s.checkpoint, deaths: s.deaths, crew: s.crew,
     raft: { x: r(s.raft.x), y: r(s.raft.y), angle: r(s.raft.angle), vx: r(s.raft.vx), vy: r(s.raft.vy), av: r(s.raft.av) },
     players: s.players.map((p) => ({
       pos: r(p.pos), aim: r(p.aim), farting: p.farting, gas: r(p.gas), burst: p.burst, empty: p.empty,

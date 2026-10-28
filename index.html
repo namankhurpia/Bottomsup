@@ -13,7 +13,7 @@
     <section id="landing" class="screen">
       <div class="card landing-card">
         <h1>Toot Raft</h1>
-        <p class="tagline">Four friends. One round raft. Only farts for power.</p>
+        <p class="tagline">Up to four friends. One round raft. Only farts for power.</p>
 
         <label class="field">
           <span>Your name</span>
@@ -35,6 +35,12 @@
             <h2>Leaderboard · Level 1</h2>
             <span class="small">Faster finish = more points. 1000 pts at par (1:15).</span>
           </div>
+          <div id="crew-tabs" class="tabs" role="tablist" aria-label="Crew size">
+            <button data-crew="1">Solo</button>
+            <button data-crew="2">2 players</button>
+            <button data-crew="3">3 players</button>
+            <button data-crew="4" class="on">4 players</button>
+          </div>
           <table id="landing-board" class="board-table"></table>
         </div>
       </div>
@@ -45,11 +51,11 @@
       <div class="card lobby-card">
         <div class="code-label">Room code</div>
         <div id="room-code" class="room-code">----</div>
-        <p class="small">Send this code to your friends. The race needs all 4 seats filled.</p>
+        <p class="small">Send this code to up to 3 friends. The raft is split evenly between everyone on it, and the host can start with 1 to 4 players.</p>
         <ol id="seats" class="seats"></ol>
         <p id="lobby-status" class="status-line"></p>
         <button id="start" class="primary" disabled>Start race</button>
-        <p class="small hint">While you wait, paddle around the pond: <kbd>Space</kbd> to fart, <kbd>A</kbd> <kbd>D</kbd> to walk around your quarter.</p>
+        <p class="small hint">While you wait, paddle around the pond: <kbd>Space</kbd> to fart, <kbd>A</kbd> <kbd>D</kbd> to walk around your slice of the raft.</p>
       </div>
     </aside>
 
@@ -89,7 +95,7 @@
 
       <div id="help" class="help hidden">
         <h2>How to play</h2>
-        <p>Four farters, one round raft. Each player owns a quarter of the rim and can walk anywhere inside it. Everyone faces the centre, so a fart pushes the raft from your spot straight through its middle: stand at the back to go forward. Turn away from the centre to make it spin. Get to the checkered finish without touching the red spikes.</p>
+        <p>Up to four farters, one round raft. The rim is split evenly between the players (alone, you get all of it) and each can walk anywhere in their slice. Everyone faces the centre, so a fart pushes the raft from your spot straight through its middle: stand at the back to go forward. Turn away from the centre to make it spin. Get to the checkered finish without touching the red spikes.</p>
         <table class="solo-only">
           <tr><td><kbd>1</kbd>–<kbd>4</kbd> / <kbd>Tab</kbd></td><td>Pick a player</td></tr>
           <tr><td><kbd>A</kbd> <kbd>D</kbd></td><td>Walk around the rim (inside your quarter)</td></tr>
@@ -105,7 +111,7 @@
         </table>
         <table class="online-only">
           <tr><td><kbd>Space</kbd>, <kbd>F</kbd> or click</td><td>Fart</td></tr>
-          <tr><td><kbd>A</kbd> <kbd>D</kbd></td><td>Walk around your quarter of the rim</td></tr>
+          <tr><td><kbd>A</kbd> <kbd>D</kbd></td><td>Walk around your slice of the rim</td></tr>
           <tr><td><kbd>Q</kbd> <kbd>E</kbd> or hold right mouse</td><td>Turn away from the centre (adds spin)</td></tr>
           <tr><td><kbd>W</kbd> / <kbd>S</kbd></td><td>Face the centre / face the water</td></tr>
           <tr><td><kbd>R</kbd></td><td>Stuck? Back to the last checkpoint</td></tr>

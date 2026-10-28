@@ -79,6 +79,7 @@ export function createHud() {
     $('deaths').textContent = s.deaths;
     s.players.forEach((p, i) => {
       const c = cards[i];
+      c.el.style.display = s.crew && !s.crew.includes(i) ? 'none' : ''; // only the crew's cards
       c.el.classList.toggle('active', mode === 'solo' && input.state.active === i);
       c.el.classList.toggle('farting', p.farting);
       c.el.classList.toggle('empty', p.empty);

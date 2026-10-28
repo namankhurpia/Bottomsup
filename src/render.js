@@ -2,7 +2,7 @@
 // Sim (x, y) maps to three (x, height, -y); sim angle maps to rotation.y.
 
 import * as THREE from 'three';
-import { NUM_PLAYERS, RAFT, arcOf, seatAt } from './sim/sim.js';
+import { ALL_SEATS, NUM_PLAYERS, RAFT, arcFor, seatAt } from './sim/sim.js';
 
 export const PLAYER_COLORS = ['#ff5a5f', '#3fa7ff', '#ffc93c', '#5ad16a'];
 const DECK_Y = 0.27;
@@ -323,26 +323,44 @@ export function createRenderer(container) {
   const rim = shadowed(new THREE.Mesh(new THREE.TorusGeometry(R, 0.13, 10, 48).rotateX(Math.PI / 2), woodDark));
   rim.position.y = 0.3;
   deck.add(rim);
-  PLAYER_COLORS.forEach((color, i) => {
-    const arc = arcOf(i);
-    // whole quarter (faint) and the walkable part (stronger)
-    for (const [from, to, opacity, inner, outer] of [
-      [arc.lo, arc.hi, 0.32, RAFT.rim - 0.5, R - 0.05],
-      [arc.min, arc.max, 0.85, RAFT.rim - 0.11, RAFT.rim + 0.11],
-    ]) {
-      const band = new THREE.Mesh(
-        new THREE.RingGeometry(inner, outer, 24, 1, from, to - from).rotateX(-Math.PI / 2),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }),
-      );
-      band.position.y = 0.285;
-      deck.add(band);
+  // each player's slice of the rim, rebuilt whenever the crew (1-4 players) changes
+  const zones = new THREE.Group();
+  deck.add(zones);
+  let zonesKey = '';
+  function buildZones(crew) {
+    const key = crew.join();
+    if (key === zonesKey) return;
+    zonesKey = key;
+    for (const z of [...zones.children]) {
+      zones.remove(z);
+      z.geometry.dispose();
+      if (z.material !== woodDark) z.material.dispose();
     }
-    // divider between this quarter and the previous one
-    const spoke = new THREE.Mesh(new THREE.BoxGeometry(R - 0.35, 0.03, 0.07), woodDark);
-    spoke.position.set(Math.cos(arc.lo) * (R / 2 + 0.15), 0.29, -Math.sin(arc.lo) * (R / 2 + 0.15));
-    spoke.rotation.y = arc.lo;
-    deck.add(spoke);
-  });
+    for (const i of crew) {
+      const arc = arcFor(i, crew);
+      const color = PLAYER_COLORS[i];
+      // whole slice (faint) and the walkable part (stronger); a solo player walks the full ring
+      const walk = arc.full ? [arc.lo, arc.hi] : [arc.min, arc.max];
+      for (const [from, to, opacity, inner, outer] of [
+        [arc.lo, arc.hi, 0.32, RAFT.rim - 0.5, R - 0.05],
+        [walk[0], walk[1], 0.85, RAFT.rim - 0.11, RAFT.rim + 0.11],
+      ]) {
+        const band = new THREE.Mesh(
+          new THREE.RingGeometry(inner, outer, arc.full ? 64 : 24, 1, from, to - from).rotateX(-Math.PI / 2),
+          new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }),
+        );
+        band.position.y = 0.285;
+        zones.add(band);
+      }
+      if (arc.full) continue;
+      // divider at the start of this slice
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(R - 0.35, 0.03, 0.07), woodDark);
+      spoke.position.set(Math.cos(arc.lo) * (R / 2 + 0.15), 0.29, -Math.sin(arc.lo) * (R / 2 + 0.15));
+      spoke.rotation.y = arc.lo;
+      zones.add(spoke);
+    }
+  }
+  buildZones(ALL_SEATS);
   const flash = new THREE.Mesh(
     new THREE.CylinderGeometry(R + 0.15, R + 0.15, 0.05, 48),
     new THREE.MeshBasicMaterial({ color: '#ff2a2a', transparent: true, opacity: 0 }),
@@ -495,10 +513,16 @@ export function createRenderer(container) {
 
     const cos = Math.cos(ra);
     const sin = Math.sin(ra);
+    const inCrew = curr.crew || ALL_SEATS;
+    buildZones(inCrew);
     curr.players.forEach((pl, i) => {
       const c = crew[i];
+      // seats not in this round's crew aren't on the raft at all
+      const playing = inCrew.includes(i);
+      c.g.visible = playing;
+      if (!playing) return;
       // facing direction in raft-local terms: toward the centre, turned by the player's aim
-      const pos = lerp(prev.players[i].pos, pl.pos, alpha);
+      const pos = lerpAngle(prev.players[i].pos, pl.pos, alpha); // a solo player's angle wraps
       const aim = pos + Math.PI + pl.aim;
       const seat = seatAt(pos);
       c.g.position.set(seat.x, DECK_Y, -seat.y);

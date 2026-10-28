@@ -110,7 +110,17 @@ function toMenu() {
     const { prev, curr, alpha } = step(dt);
     view.render(prev, curr, alpha, dt, input.state);
   };
-  loadBoard($('landing-board'));
+  loadBoard($('landing-board'), landingCrew);
+}
+
+// landing leaderboard tabs: one board per crew size
+let landingCrew = 4;
+for (const tab of document.querySelectorAll('#crew-tabs button')) {
+  tab.onclick = () => {
+    landingCrew = Number(tab.dataset.crew);
+    for (const t of document.querySelectorAll('#crew-tabs button')) t.classList.toggle('on', t === tab);
+    loadBoard($('landing-board'), landingCrew);
+  };
 }
 
 // --- solo -------------------------------------------------------------------------------
@@ -165,7 +175,6 @@ const ERRORS = {
   'room-not-found': 'No room with that code. Check the 4 digits?',
   'room-full': 'That room already has 4 players.',
   'in-progress': "That room is mid-race. Wait for them to finish.",
-  'need-4': 'The race needs all 4 players.',
   'not-host': 'Only the host can do that.',
   'already-in-room': 'You are already in a room.',
 };
@@ -254,9 +263,10 @@ function renderLobby(room) {
   });
   const ready = room.seats.filter((s) => s && s.connected).length;
   const isHost = room.host === online.seat;
-  $('lobby-status').textContent =
-    ready < NUM_PLAYERS ? `Waiting for players (${ready}/${NUM_PLAYERS})` : isHost ? 'Everyone is here!' : 'Everyone is here! Waiting for the host…';
-  $('start').disabled = !(isHost && ready === NUM_PLAYERS);
+  const split = { 1: 'the whole raft to yourself', 2: 'half the raft each', 3: 'a third of the raft each', 4: 'a quarter each' }[ready];
+  $('lobby-status').textContent = `${ready} player${ready === 1 ? '' : 's'}: ${split}` + (isHost ? '' : '. Waiting for the host…');
+  $('start').disabled = !isHost;
+  $('start').textContent = ready === NUM_PLAYERS ? 'Start race' : `Start race with ${ready}`;
   $('start').style.display = isHost ? '' : 'none';
 }
 
@@ -265,18 +275,16 @@ function renderResults(room) {
   if (!r) return;
   $('result-level').textContent = `Level ${LEVELS[r.level].number} · ${r.levelName}`;
   $('result-time').textContent = fmtMs(r.timeMs);
-  $('result-detail').textContent = `${r.points} points · #${r.rank} of ${r.of} crews`;
+  $('result-detail').textContent = `${r.points} points · #${r.rank} of ${r.of} ${crewLabel(r.crewSize)} crews`;
   $('result-crew').textContent = `${r.players.join(', ')} · ${r.deaths} splat${r.deaths === 1 ? '' : 's'} (they don't count)`;
-  loadBoard($('result-board'), r.id);
+  loadBoard($('result-board'), r.crewSize, r.id);
 }
 
 function renderResultButtons(room) {
   const isHost = room.host === online.seat;
-  const full = room.seats.filter((s) => s && s.connected).length === NUM_PLAYERS;
   $('again').style.display = isHost ? '' : 'none';
   $('to-pond').style.display = isHost ? '' : 'none';
-  $('again').disabled = !full;
-  $('results-wait').textContent = isHost ? (full ? '' : 'Someone left. Head back to the pond to fill the seat.') : 'Waiting for the host to pick what is next…';
+  $('results-wait').textContent = isHost ? '' : 'Waiting for the host to pick what is next…';
 }
 
 function receiveSnap(m) {
@@ -355,9 +363,11 @@ function leaveRoom() {
 }
 
 // --- leaderboard ------------------------------------------------------------------------
-async function loadBoard(table, highlightId = null) {
+const crewLabel = (n) => ({ 1: 'solo', 2: '2-player', 3: '3-player', 4: '4-player' })[n] || '';
+
+async function loadBoard(table, crewSize = 4, highlightId = null) {
   try {
-    const res = await fetch(`/api/leaderboard?level=${RACE_LEVELS[0]}`);
+    const res = await fetch(`/api/leaderboard?level=${RACE_LEVELS[0]}&crew=${crewSize}`);
     if (!res.ok) throw new Error(res.status);
     renderBoard(table, (await res.json()).top.slice(0, 10), highlightId);
   } catch {
