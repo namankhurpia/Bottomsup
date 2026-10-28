@@ -255,3 +255,99 @@ input {
   .start-lights { width: 210px; gap: 8px; }
   .start-lights i { width: 36px; height: 36px; }
 }
+
+/* --- levels / history pages ------------------------------------------------------- */
+body.mode-menu.page-levels #landing, body.mode-menu.page-history #landing { display: none; }
+body.mode-menu.page-levels #levels-page, body.mode-menu.page-history #history-page { display: flex; }
+.page { position: fixed; inset: 0; align-items: center; justify-content: center; padding: 16px; }
+.page-card { width: 560px; max-width: 100%; max-height: calc(100vh - 32px); overflow-y: auto; }
+.page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.page-head h2 { margin: 0; font-size: 24px; font-weight: 900; }
+.back { padding: 6px 12px; font-size: 13px; }
+.nav-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.nav-row button { padding: 7px 12px; font-size: 13px; }
+.board-head select { font: inherit; font-weight: 800; font-size: 15px; border: none; background: transparent; color: var(--ink); padding: 0; cursor: pointer; }
+
+.level-list { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 10px; }
+.level-list li {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 12px;
+  border-radius: 14px; background: rgba(255, 255, 255, 0.75); border: 2px solid rgba(18, 48, 74, 0.1);
+}
+.level-list li.locked { opacity: 0.55; }
+.level-list li.cleared { border-color: #4ade80; }
+.level-list .num {
+  width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-weight: 900; font-size: 18px;
+  background: #ff8a3d; color: #fff;
+}
+.level-list li.locked .num { background: #9aa8b5; }
+.level-list .info b { display: block; font-size: 16px; }
+.level-list .info p { margin: 2px 0 0; font-size: 12px; color: var(--muted); line-height: 1.35; }
+.level-list .state { font-size: 12px; font-weight: 800; margin-top: 4px; }
+.level-list .play { padding: 7px 12px; font-size: 13px; }
+
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 8px 0 12px; }
+.stat { background: rgba(255, 255, 255, 0.75); border-radius: 12px; padding: 10px 12px; }
+.stat .v { font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.stat .k { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+
+.level-pick { display: grid; gap: 6px; margin: 6px 0 10px; }
+.level-pick button { text-align: left; padding: 8px 10px; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
+.level-pick button.on { border-color: #ff8a3d; background: #fff4ec; }
+.level-pick button:disabled { cursor: not-allowed; }
+.level-pick .lock { color: var(--muted); font-size: 11px; }
+
+/* --- phone controls ------------------------------------------------------------------ */
+.touch-controls { display: none; }
+body.touch.mode-solo .touch-controls,
+body.touch.mode-online.phase-lobby .touch-controls,
+body.touch.mode-online.phase-countdown .touch-controls,
+body.touch.mode-online.phase-race .touch-controls { display: block; }
+body.touch { touch-action: manipulation; }
+body.touch #game canvas, .touch-controls * { touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.stick, .fart-btn { position: fixed; bottom: calc(18px + env(safe-area-inset-bottom)); pointer-events: auto; }
+.stick { left: calc(16px + env(safe-area-inset-left)); width: 150px; height: 84px; }
+.stick-track {
+  position: absolute; inset: 16px 0; border-radius: 999px; background: rgba(255, 255, 255, 0.55);
+  border: 2px solid rgba(18, 48, 74, 0.18); box-shadow: 0 6px 18px rgba(18, 48, 74, 0.18);
+}
+.stick-track::before, .stick-track::after {
+  content: '‹'; position: absolute; top: 50%; transform: translateY(-50%); left: 12px; color: var(--muted); font-weight: 900; font-size: 22px;
+}
+.stick-track::after { content: '›'; left: auto; right: 12px; }
+.knob {
+  position: absolute; top: 50%; left: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 50%;
+  background: #fff; border: 3px solid rgba(18, 48, 74, 0.2); box-shadow: 0 4px 12px rgba(18, 48, 74, 0.3); transition: transform 0.05s;
+}
+.stick.held .knob { transition: none; background: #eef6ff; }
+.fart-btn {
+  right: calc(16px + env(safe-area-inset-right)); width: 96px; height: 96px; border-radius: 50%; padding: 0;
+  font-size: 17px; letter-spacing: 1px; background: #8bc34a; border: 4px solid #6a9b32; color: #fff;
+  box-shadow: 0 8px 20px rgba(18, 48, 74, 0.3), inset 0 -6px 0 rgba(0, 0, 0, 0.12);
+}
+.fart-btn.held { transform: scale(0.92); background: #7cb342; box-shadow: 0 4px 10px rgba(18, 48, 74, 0.3), inset 0 4px 0 rgba(0, 0, 0, 0.12); }
+
+/* phone layout: player cards up top, lobby card above the controls */
+body.touch .players { top: 72px; bottom: auto; gap: 6px; }
+body.touch .player { padding: 5px 8px; }
+body.touch .player .keys { display: none; }
+body.touch.phase-lobby .players { display: none; }
+@media (max-width: 720px) {
+  /* compact lobby at the top, so the raft stays visible in the middle of the screen */
+  body.touch #lobby { top: 112px; bottom: auto; left: 12px; right: 12px; width: auto; max-height: 45vh; overflow-y: auto; }
+  body.touch .lobby-card { padding: 10px 12px; }
+  body.touch .lobby-card > p.small { display: none; }
+  body.touch .room-code { font-size: 30px; letter-spacing: 6px; }
+  body.touch .seats { grid-template-columns: 1fr 1fr; gap: 4px; margin: 6px 0; }
+  body.touch .seats li { padding: 4px 8px; font-size: 13px; }
+  body.touch .seats .tag { display: none; }
+  body.touch .level-pick { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 6px; }
+  body.touch .level-pick button { padding: 4px 8px; font-size: 12px; }
+  body.touch .level-pick .lock { display: none; }
+  body.touch .status-line { margin: 2px 0 6px; font-size: 13px; }
+  body.touch #start { padding: 8px; }
+  body.touch .players { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  body.touch .player .voice, body.touch .player .status { display: none; }
+  body.touch .stats { gap: 8px; padding: 6px 10px; }
+  body.touch .title { padding: 6px 10px; font-size: 15px; }
+  body.touch .start-lights { top: 130px; }
+}

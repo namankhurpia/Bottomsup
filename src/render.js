@@ -195,7 +195,8 @@ export function createRenderer(container) {
       tex.repeat.set(c.w / 2.5, c.h / 2.5);
       const plane = new THREE.Mesh(
         new THREE.PlaneGeometry(c.w, c.h).rotateX(-Math.PI / 2),
-        new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.45, depthWrite: false }),
+        // stronger currents get bolder, faster arrows
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: Math.min(0.85, 0.3 + Math.hypot(c.ax, c.ay) * 0.12), depthWrite: false }),
       );
       plane.position.copy(toWorld(c.x, c.y, 0.02));
       // chevrons point down the texture (+v). Rotate so they point along the current.
@@ -240,8 +241,26 @@ export function createRenderer(container) {
       return g;
     });
 
+    // --- a drop: water channels on stone towers over a misty chasm ---------------
+    if (level.water) {
+      const stone = mat('#8d939e', { roughness: 0.95 });
+      const lip = mat('#b9bec7', { roughness: 0.9 });
+      for (const r of level.water) {
+        const surface = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.h).rotateX(-Math.PI / 2), water.material);
+        surface.position.copy(toWorld(r.x, r.y, 0));
+        const catcher = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.h).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.22 }));
+        catcher.position.copy(toWorld(r.x, r.y, 0.01));
+        catcher.receiveShadow = true;
+        const tower = new THREE.Mesh(new THREE.BoxGeometry(r.w + 0.5, 40, r.h + 0.5), stone);
+        tower.position.copy(toWorld(r.x, r.y, -20.06));
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(r.w + 0.7, 0.25, r.h + 0.7), lip);
+        edge.position.copy(toWorld(r.x, r.y, -0.2));
+        lg.add(surface, catcher, tower, edge);
+      }
+    }
+
     // --- scenery: little islands outside the canal --------------------------------
-    {
+    if (!level.water) {
       let seed = 7;
       const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
       const b = level.bounds;
@@ -280,7 +299,7 @@ export function createRenderer(container) {
         if (o.geometry) o.geometry.dispose();
         for (const m of [].concat(o.material || [])) {
           if (m.map) m.map.dispose();
-          if (m !== woodDark && m !== woodLight) m.dispose();
+          if (m !== woodDark && m !== woodLight && m !== water.material) m.dispose();
         }
       });
     }
@@ -290,6 +309,14 @@ export function createRenderer(container) {
     currentTextures = built.currentTextures;
     moverMeshes = built.moverMeshes;
     scene.add(levelGroup);
+    // levels with a drop swap the open sea for a misty chasm (and back again for the others)
+    const chasm = !!level.water;
+    water.visible = !chasm;
+    shadowCatcher.visible = !chasm;
+    scene.background.set(chasm ? '#5f7f9e' : '#9fdcf5');
+    scene.fog.color.set(chasm ? '#5f7f9e' : '#9fdcf5');
+    scene.fog.near = chasm ? 30 : 45;
+    scene.fog.far = chasm ? 75 : 110;
     firstFrame = true;
   }
 
@@ -498,7 +525,9 @@ export function createRenderer(container) {
     const rx = lerp(prev.raft.x, curr.raft.x, alpha);
     const ry = lerp(prev.raft.y, curr.raft.y, alpha);
     const ra = lerpAngle(prev.raft.angle, curr.raft.angle, alpha);
-    raft.position.copy(toWorld(rx, ry, Math.sin(time * 2.2) * 0.04));
+    // falling off the edge: the raft drops away into the chasm until it respawns
+    const drop = curr.cause === 'fell' ? -16 * (1 - curr.respawn) ** 2 : 0;
+    raft.position.copy(toWorld(rx, ry, Math.sin(time * 2.2) * 0.04 + drop));
     raft.rotation.y = ra;
     deck.rotation.x = Math.sin(time * 1.7) * 0.025;
     deck.rotation.z = Math.cos(time * 1.3) * 0.025;

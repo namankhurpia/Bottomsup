@@ -22,6 +22,7 @@ export function createInput({ onRespawn, onRestart, onToggleHelp, onToggleMute, 
     mouseY: 0,
     pads: [],
     seat: null, // online: the only seat this browser controls
+    touch: null, // phones: { move, fart } from the on-screen controls (see touch.js)
   };
   const typing = (e) => e.target && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(e.target.tagName);
 
@@ -49,7 +50,7 @@ export function createInput({ onRespawn, onRestart, onToggleHelp, onToggleMute, 
     state.mouseY = e.clientY;
   });
   addEventListener('pointerdown', (e) => {
-    if (e.target.tagName !== 'CANVAS') return;
+    if (e.target.tagName !== 'CANVAS' || e.pointerType === 'touch') return; // phones use the on-screen button
     if (e.button === 0) state.mouseDown = true;
     if (e.button === 2) state.mouseAim = true;
   });
@@ -92,6 +93,16 @@ export function createInput({ onRespawn, onRestart, onToggleHelp, onToggleMute, 
     const fart = FART_KEYS.map((k) => !online && (keys.has(k) || keys.has('KeyF')));
     if (keys.has('Space') || state.mouseDown) fart[a] = true;
     if (online && (keys.has('KeyF') || FART_KEYS.some((k) => keys.has(k)))) fart[a] = true;
+
+    // on-screen controls: online they drive your seat; in solo the joystick walks everyone
+    // and the button farts everyone (one thumb can't juggle four players)
+    const t = state.touch;
+    if (t) {
+      for (const i of online ? [a] : [0, 1, 2, 3]) {
+        if (t.move) move[i] = t.move;
+        if (t.fart) fart[i] = true;
+      }
+    }
 
     // Gamepads: left stick aims (screen-relative), LB/RB or d-pad walks, RT or A farts.
     state.pads = [];

@@ -293,7 +293,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
 function compact(s) {
   const r = (v) => Math.round(v * 1000) / 1000;
   return {
-    tick: s.tick, phase: s.phase, timeTicks: s.timeTicks, checkpoint: s.checkpoint, deaths: s.deaths, crew: s.crew,
+    tick: s.tick, phase: s.phase, timeTicks: s.timeTicks, checkpoint: s.checkpoint, deaths: s.deaths, crew: s.crew, cause: s.cause, respawn: r(s.respawn),
     raft: { x: r(s.raft.x), y: r(s.raft.y), angle: r(s.raft.angle), vx: r(s.raft.vx), vy: r(s.raft.vy), av: r(s.raft.av) },
     players: s.players.map((p) => ({
       pos: r(p.pos), aim: r(p.aim), farting: p.farting, gas: r(p.gas), burst: p.burst, empty: p.empty,

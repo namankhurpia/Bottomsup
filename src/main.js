@@ -5,17 +5,21 @@
 
 import RAPIER from '@dimforge/rapier2d-compat';
 import { createSim, DT, NUM_PLAYERS } from './sim/sim.js';
-import { LEVELS, RACE_LEVELS } from './sim/levels.js';
+import { LEVELS, RACE_LEVELS, nextLevel } from './sim/levels.js';
 import { createRenderer } from './render.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { createHud, fmtMs, fmtTime } from './hud.js';
 import { createNet } from './net.js';
 import { createStartLights } from './lights.js';
+import { createTouchControls } from './touch.js';
 
 await RAPIER.init();
 
 const $ = (id) => document.getElementById(id);
+// phones and tablets get on-screen controls (joystick + fart button)
+const isTouch = navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches;
+document.body.classList.toggle('touch', isTouch);
 const view = createRenderer($('game'));
 const audio = createAudio();
 const hud = createHud();
@@ -26,11 +30,13 @@ let frameFn = () => {};
 
 const input = createInput({
   onRespawn: () => (mode === 'solo' ? local && local.sim.respawn() : mode === 'online' && net.send({ t: 'respawn' })),
-  onRestart: () => mode === 'solo' && startSolo(),
+  onRestart: () => mode === 'solo' && startSolo(soloLevel),
   onToggleHelp: () => mode !== 'menu' && $('help').classList.toggle('hidden'),
   onToggleMute: () => mode !== 'menu' && hud.showMessage(audio.toggleMute() ? 'Muted' : 'Sound on', '', 800),
   screenToWorld: (x, y) => view.screenToWorld(x, y),
 });
+
+const touchControls = isTouch ? createTouchControls(input) : null;
 
 function setBodyClass(prefix, value) {
   for (const c of [...document.body.classList]) if (c.startsWith(prefix)) document.body.classList.remove(c);
@@ -39,6 +45,7 @@ function setBodyClass(prefix, value) {
 function setMode(m) {
   mode = m;
   lights.hide();
+  if (touchControls) touchControls.releaseAll();
   setBodyClass('mode-', m);
   if (m !== 'online') setBodyClass('phase-', null);
 }
@@ -84,6 +91,9 @@ function commonEvents(events) {
       audio.ouch();
       view.shake(0.8);
       hud.showMessage('SPLAT!', 'Back to the checkpoint…', 1100);
+    } else if (e.type === 'fell') {
+      audio.fall();
+      hud.showMessage('Off the edge!', 'Back to the checkpoint…', 1200);
     } else if (e.type === 'respawned') {
       view.snapCamera();
     }
@@ -113,37 +123,62 @@ function toMenu() {
     const { prev, curr, alpha } = step(dt);
     view.render(prev, curr, alpha, dt, input.state);
   };
-  loadBoard($('landing-board'), landingCrew);
+  showPage(null);
+  refreshLandingBoard();
 }
 
-// landing leaderboard tabs: one board per crew size
+// landing leaderboard: pick a level and a crew size (one board per crew size)
 let landingCrew = 4;
+let landingLevel = RACE_LEVELS[0];
+const fmtPar = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+for (const id of RACE_LEVELS) {
+  const opt = document.createElement('option');
+  opt.value = id;
+  opt.textContent = `Leaderboard · Level ${LEVELS[id].number}`;
+  $('board-level').append(opt);
+}
+$('board-level').onchange = (e) => {
+  landingLevel = e.target.value;
+  refreshLandingBoard();
+};
+function refreshLandingBoard() {
+  $('board-par').textContent = `Faster finish = more points. 1000 pts at par (${fmtPar(LEVELS[landingLevel].par)}).`;
+  loadBoard($('landing-board'), landingCrew, null, landingLevel);
+}
 for (const tab of document.querySelectorAll('#crew-tabs button')) {
   tab.onclick = () => {
     landingCrew = Number(tab.dataset.crew);
     for (const t of document.querySelectorAll('#crew-tabs button')) t.classList.toggle('on', t === tab);
-    loadBoard($('landing-board'), landingCrew);
+    refreshLandingBoard();
   };
 }
 
 // --- solo -------------------------------------------------------------------------------
-let best = null;
-try {
-  best = Number(localStorage.getItem('tootraft.best.1')) || null;
-} catch {}
+// best solo-practice time per level, kept in this browser (level 1 keeps its original key)
+const bestKey = (id) => (id === 'canal' ? 'tootraft.best.1' : `tootraft.best.${id}`);
+function loadBest(id) {
+  try {
+    return Number(localStorage.getItem(bestKey(id))) || null;
+  } catch {
+    return null;
+  }
+}
 
-function startSolo() {
+let soloLevel = RACE_LEVELS[0];
+function startSolo(levelId = soloLevel) {
+  soloLevel = levelId;
+  let best = loadBest(levelId);
   setMode('solo');
   input.setSeat(null);
   view.setSeats(null);
   hud.setPlayers(null);
-  hud.setLevel(LEVELS.canal);
+  hud.setLevel(LEVELS[levelId]);
   $('best').textContent = best ? fmtTime(best) : '—';
   const startCp = Number(new URLSearchParams(location.search).get('cp')) || 0;
   // start lights: everyone sits still for 3 s, then the clock starts at GO
   let countdown = 3 * 60;
   const still = Array.from({ length: NUM_PLAYERS }, () => ({ aim: 0, fart: false, move: 0 }));
-  const step = runLocal('canal', {
+  const step = runLocal(levelId, {
     commands: (s) => {
       if (countdown <= 0) return input.getCommands(DT, s);
       countdown--;
@@ -165,7 +200,7 @@ function startSolo() {
         if (isBest) {
           best = e.timeTicks;
           try {
-            localStorage.setItem('tootraft.best.1', String(best));
+            localStorage.setItem(bestKey(levelId), String(best));
           } catch {}
           $('best').textContent = fmtTime(best);
         }
@@ -175,7 +210,7 @@ function startSolo() {
   });
   if (startCp) local.sim.restart(startCp), (local.prev = local.curr = local.sim.snapshot());
   hud.hideMessage();
-  $('help').classList.remove('hidden');
+  $('help').classList.toggle('hidden', isTouch); // phones: the controls are on screen instead
   frameFn = (dt) => {
     const { prev, curr, alpha } = step(dt);
     view.render(prev, curr, alpha, dt, input.state);
@@ -282,6 +317,28 @@ function renderLobby(room) {
   $('start').disabled = !isHost;
   $('start').textContent = ready === NUM_PLAYERS ? 'Start race' : `Start race with ${ready}`;
   $('start').style.display = isHost ? '' : 'none';
+  renderLevelPick(room, isHost);
+}
+
+// lobby level picker: the host chooses; locked levels show what unlocks them
+function renderLevelPick(room, isHost) {
+  const box = $('level-pick');
+  box.textContent = '';
+  RACE_LEVELS.forEach((id, i) => {
+    const L = LEVELS[id];
+    const open = room.unlocked.includes(id);
+    const b = document.createElement('button');
+    b.className = id === room.choice ? 'on' : '';
+    b.disabled = !isHost || !open;
+    const name = document.createElement('span');
+    name.textContent = `${L.number}. ${L.name}`;
+    const note = document.createElement('span');
+    note.className = 'lock';
+    note.textContent = open ? (id === room.choice ? 'selected' : '') : `🔒 finish level ${LEVELS[RACE_LEVELS[i - 1]].number}`;
+    b.append(name, note);
+    b.onclick = () => net.send({ t: 'level', level: id });
+    box.append(b);
+  });
 }
 
 function renderResults(room) {
@@ -291,14 +348,21 @@ function renderResults(room) {
   $('result-time').textContent = fmtMs(r.timeMs);
   $('result-detail').textContent = `${r.points} points · #${r.rank} of ${r.of} ${crewLabel(r.crewSize)} crews`;
   $('result-crew').textContent = `${r.players.join(', ')} · ${r.deaths} splat${r.deaths === 1 ? '' : 's'} (they don't count)`;
-  loadBoard($('result-board'), r.crewSize, r.id);
+  loadBoard($('result-board'), r.crewSize, r.id, r.level);
 }
 
 function renderResultButtons(room) {
   const isHost = room.host === online.seat;
+  const next = room.result && nextLevel(room.result.level);
+  const canNext = !!next && room.unlocked.includes(next);
+  $('next-level').style.display = isHost && canNext ? '' : 'none';
+  if (canNext) $('next-level').textContent = `Next: ${LEVELS[next].name} →`;
   $('again').style.display = isHost ? '' : 'none';
+  $('again').classList.toggle('primary', !canNext);
   $('to-pond').style.display = isHost ? '' : 'none';
-  $('results-wait').textContent = isHost ? '' : 'Waiting for the host to pick what is next…';
+  $('results-wait').textContent = isHost
+    ? next && !canNext ? '' : next ? `You unlocked level ${LEVELS[next].number}!` : 'That was the last level. For now…'
+    : 'Waiting for the host to pick what is next…';
 }
 
 function receiveSnap(m) {
@@ -380,9 +444,9 @@ function leaveRoom() {
 // --- leaderboard ------------------------------------------------------------------------
 const crewLabel = (n) => ({ 1: 'solo', 2: '2-player', 3: '3-player', 4: '4-player' })[n] || '';
 
-async function loadBoard(table, crewSize = 4, highlightId = null) {
+async function loadBoard(table, crewSize = 4, highlightId = null, level = RACE_LEVELS[0]) {
   try {
-    const res = await fetch(`/api/leaderboard?level=${RACE_LEVELS[0]}&crew=${crewSize}`);
+    const res = await fetch(`/api/leaderboard?level=${level}&crew=${crewSize}`);
     if (!res.ok) throw new Error(res.status);
     renderBoard(table, (await res.json()).top.slice(0, 10), highlightId);
   } catch {
@@ -461,10 +525,137 @@ function join() {
 $('join').onclick = join;
 $('code').addEventListener('keydown', (e) => e.key === 'Enter' && join());
 $('code').addEventListener('input', (e) => (e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4)));
-$('solo').onclick = startSolo;
+$('solo').onclick = () => startSolo(RACE_LEVELS[0]);
 $('leave').onclick = leaveRoom;
 $('start').onclick = () => net.send({ t: 'start' });
-$('again').onclick = () => net.send({ t: 'start' });
+$('again').onclick = () => net.send({ t: 'start', level: online.room.result.level });
+$('next-level').onclick = () => net.send({ t: 'start', level: nextLevel(online.room.result.level) });
+$('open-levels').onclick = () => showPage('levels');
+$('open-history').onclick = () => showPage('history');
+for (const b of document.querySelectorAll('[data-back]')) b.onclick = () => showPage(null);
+
+// --- menu pages: levels and race history --------------------------------------------------
+function showPage(page) {
+  setBodyClass('page-', page);
+  if (page === 'levels') renderLevelsPage();
+  if (page === 'history') renderHistoryPage();
+}
+
+const typedName = () => nameInput.value.trim();
+
+async function renderLevelsPage() {
+  const name = typedName();
+  $('levels-who').textContent = name ? `Progress for ${name}` : 'Type your name on the start page to see your progress. Level 1 is always open.';
+  let prog = { cleared: {}, unlocked: [RACE_LEVELS[0]] };
+  try {
+    if (name) prog = await (await fetch(`/api/progress?name=${encodeURIComponent(name)}`)).json();
+  } catch {}
+  const list = $('level-list');
+  list.textContent = '';
+  RACE_LEVELS.forEach((id, i) => {
+    const L = LEVELS[id];
+    const open = prog.unlocked.includes(id);
+    const done = prog.cleared[id];
+    const li = document.createElement('li');
+    li.className = done ? 'cleared' : open ? '' : 'locked';
+    const num = document.createElement('div');
+    num.className = 'num';
+    num.textContent = open ? String(L.number) : '🔒';
+    const info = document.createElement('div');
+    info.className = 'info';
+    const title = document.createElement('b');
+    title.textContent = L.name;
+    const blurb = document.createElement('p');
+    blurb.textContent = `${L.blurb} Par ${fmtPar(L.par)}.`;
+    const state = document.createElement('div');
+    state.className = 'state';
+    state.textContent = done
+      ? `✓ Cleared · best ${fmtMs(done.best_ms)} · ${done.best_points} pts · ${done.races} race${done.races === 1 ? '' : 's'}`
+      : open ? 'Unlocked: not finished yet' : `Finish level ${LEVELS[RACE_LEVELS[i - 1]].number} to unlock`;
+    info.append(title, blurb, state);
+    const play = document.createElement('button');
+    play.className = 'play';
+    play.textContent = 'Practise solo';
+    play.disabled = !open;
+    play.onclick = () => startSolo(id);
+    li.append(num, info, play);
+    list.append(li);
+  });
+}
+
+let historyScope = 'mine';
+for (const tab of document.querySelectorAll('#history-tabs button')) {
+  tab.onclick = () => {
+    historyScope = tab.dataset.scope;
+    for (const t of document.querySelectorAll('#history-tabs button')) t.classList.toggle('on', t === tab);
+    renderHistoryPage();
+  };
+}
+
+async function renderHistoryPage() {
+  const name = typedName();
+  const scope = name ? historyScope : 'all';
+  const stats = $('history-stats');
+  const table = $('history-table');
+  let h;
+  try {
+    h = await (await fetch(`/api/history${scope === 'mine' ? `?name=${encodeURIComponent(name)}` : ''}`)).json();
+  } catch {
+    stats.textContent = 'History is offline right now.';
+    table.textContent = '';
+    return;
+  }
+  const tiles = [['Races, everyone', h.total]];
+  if (name) {
+    const mine = scope === 'mine' ? h.mine : null;
+    if (mine !== null) tiles.push([`${name}'s races`, mine]);
+  }
+  for (const id of RACE_LEVELS) tiles.push([`Level ${LEVELS[id].number}`, h.byLevel[id] || 0]);
+  for (const n of [1, 2, 3, 4]) if (h.byCrew[n]) tiles.push([n === 1 ? 'Solo crews' : `${n}-player crews`, h.byCrew[n]]);
+  stats.textContent = '';
+  for (const [k, v] of tiles) {
+    const d = document.createElement('div');
+    d.className = 'stat';
+    const vv = document.createElement('div');
+    vv.className = 'v';
+    vv.textContent = String(v);
+    const kk = document.createElement('div');
+    kk.className = 'k';
+    kk.textContent = k;
+    d.append(vv, kk);
+    stats.append(d);
+  }
+  $('history-tabs').style.display = name ? '' : 'none';
+  table.textContent = '';
+  const head = table.insertRow();
+  for (const t of ['When', 'Level', 'Crew', 'Time', 'Points']) {
+    const th = document.createElement('th');
+    th.textContent = t;
+    head.append(th);
+  }
+  if (!h.games.length) {
+    const td = table.insertRow().insertCell();
+    td.colSpan = 5;
+    td.textContent = scope === 'mine' ? `No races for ${name} yet.` : 'No races yet.';
+    td.parentElement.className = 'empty-row';
+    return;
+  }
+  for (const g of h.games) {
+    const tr = table.insertRow();
+    const cells = [
+      [new Date(g.finished_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }), 'when'],
+      [LEVELS[g.level] ? `${LEVELS[g.level].number}. ${LEVELS[g.level].name}` : g.level, ''],
+      [g.players.join(', '), 'crew'],
+      [fmtMs(g.time_ms), 'num'],
+      [String(g.points), 'num'],
+    ];
+    for (const [text, cls] of cells) {
+      const td = tr.insertCell();
+      td.textContent = text;
+      td.className = cls;
+    }
+  }
+}
 $('to-pond').onclick = () => net.send({ t: 'lobby' });
 
 // A hidden tab stops running frames, so tell the server we let go of everything.

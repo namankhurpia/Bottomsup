@@ -129,6 +129,31 @@ export function createAudio() {
     o.stop(t + 0.32);
   }
 
+  // fell off the edge: a cartoon slide whistle going down
+  function fall() {
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const vib = ctx.createOscillator();
+    const vibAmt = ctx.createGain();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(1400, t);
+    o.frequency.exponentialRampToValueAtTime(160, t + 1.1);
+    vib.frequency.value = 9;
+    vibAmt.gain.value = 25;
+    vib.connect(vibAmt).connect(o.frequency);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.18, t + 0.05);
+    g.gain.setValueAtTime(0.18, t + 0.9);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+    o.connect(g).connect(master);
+    o.start(t);
+    vib.start(t);
+    o.stop(t + 1.25);
+    vib.stop(t + 1.25);
+  }
+
   function startGo() {
     if (!ctx || ctx.state !== 'running') return;
     const t = ctx.currentTime;
@@ -171,6 +196,7 @@ export function createAudio() {
     fartEnd,
     startBeep,
     startGo,
+    fall,
     checkpoint: () => blip([660, 880], 0.1),
     finish: () => blip([523, 659, 784, 1047], 0.14),
     ouch: () => blip([220, 110], 0.16, 'sawtooth', 0.22),

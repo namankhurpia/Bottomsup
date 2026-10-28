@@ -28,12 +28,16 @@
           </div>
         </div>
         <p id="landing-error" class="error" role="alert"></p>
-        <button id="solo" class="link">or practise solo (you control all four)</button>
+        <div class="nav-row">
+          <button id="open-levels">Levels</button>
+          <button id="open-history">Race history</button>
+          <button id="solo" class="link">or practise solo</button>
+        </div>
 
         <div class="board">
           <div class="board-head">
-            <h2>Leaderboard · Level 1</h2>
-            <span class="small">Faster finish = more points. 1000 pts at par (1:15).</span>
+            <select id="board-level" aria-label="Leaderboard level"></select>
+            <span class="small" id="board-par"></span>
           </div>
           <div id="crew-tabs" class="tabs" role="tablist" aria-label="Crew size">
             <button data-crew="1">Solo</button>
@@ -46,6 +50,35 @@
       </div>
     </section>
 
+    <!-- levels: progress for your name, unlock rules, solo practice per level -->
+    <section id="levels-page" class="screen page">
+      <div class="card page-card">
+        <div class="page-head">
+          <button class="back" data-back>← Back</button>
+          <h2>Levels</h2>
+        </div>
+        <p class="small" id="levels-who"></p>
+        <ol id="level-list" class="level-list"></ol>
+        <p class="small">To race a level with friends, create a room and the host picks it in the lobby. Finishing a level (with any number of players) unlocks the next one for everyone in that crew.</p>
+      </div>
+    </section>
+
+    <!-- race history: how many races, and the recent ones -->
+    <section id="history-page" class="screen page">
+      <div class="card page-card">
+        <div class="page-head">
+          <button class="back" data-back>← Back</button>
+          <h2>Race history</h2>
+        </div>
+        <div id="history-stats" class="stat-grid"></div>
+        <div class="tabs" id="history-tabs">
+          <button data-scope="mine" class="on">My races</button>
+          <button data-scope="all">Everyone</button>
+        </div>
+        <table id="history-table" class="board-table"></table>
+      </div>
+    </section>
+
     <!-- room lobby (online, while paddling around the practice pond) -->
     <aside id="lobby" class="screen">
       <div class="card lobby-card">
@@ -53,6 +86,8 @@
         <div id="room-code" class="room-code">----</div>
         <p class="small">Send this code to up to 3 friends. The raft is split evenly between everyone on it, and the host can start with 1 to 4 players.</p>
         <ol id="seats" class="seats"></ol>
+        <div class="code-label">Level</div>
+        <div id="level-pick" class="level-pick"></div>
         <p id="lobby-status" class="status-line"></p>
         <button id="start" class="primary" disabled>Start race</button>
         <p class="small hint">While you wait, paddle around the pond: <kbd>Space</kbd> to fart, <kbd>A</kbd> <kbd>D</kbd> to walk around your slice of the raft.</p>
@@ -68,7 +103,8 @@
         <p id="result-crew" class="small"></p>
         <table id="result-board" class="board-table"></table>
         <div class="actions row">
-          <button id="again" class="primary">Race again</button>
+          <button id="next-level" class="primary">Next level →</button>
+          <button id="again">Race again</button>
           <button id="to-pond">Back to the pond</button>
         </div>
         <p id="results-wait" class="small"></p>
