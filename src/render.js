@@ -422,37 +422,45 @@ export function createRenderer(container) {
   scene.add(raft);
   // round deck: plank texture on the top, a log rim, and each player's quarter marked on the rim
   const R = RAFT.radius;
-  // an inflatable rafting dinghy: orange tube with white stripes, pale rubber floor, grab rope
-  const TUBE = 0.3; // tube thickness (radius)
-  const stripes = document.createElement('canvas');
-  stripes.width = 512;
-  stripes.height = 16;
+  // a whitewater raft: one bold orange tube with a thin white stripe round its outside and
+  // seams between the air chambers, sitting low in the water with a dark rubber floor
+  const TUBE = 0.32; // tube thickness (radius)
+  const skin = document.createElement('canvas');
+  skin.width = 512; // around the raft
+  skin.height = 64; // around the tube; the top and bottom rows are the tube's outer side
   {
-    const g = stripes.getContext('2d');
-    g.fillStyle = '#ff7417';
-    g.fillRect(0, 0, 512, 16);
+    const g = skin.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 0, 64);
+    grad.addColorStop(0, '#ff6a13');
+    grad.addColorStop(0.5, '#ff8a3a'); // a touch lighter on top, like sun on rubber
+    grad.addColorStop(1, '#ff6a13');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 512, 64);
     g.fillStyle = '#ffffff';
-    for (let k = 0; k < 12; k++) g.fillRect(k * (512 / 12), 0, 14, 16);
+    g.fillRect(0, 0, 512, 4); // the white stripe along the outer side
+    g.fillRect(0, 60, 512, 4);
+    g.fillStyle = 'rgba(90, 30, 0, 0.45)';
+    for (let k = 0; k < 4; k++) g.fillRect(k * 128 + 64, 0, 3, 64); // seams between the 4 air chambers
   }
-  const stripeTex = new THREE.CanvasTexture(stripes);
-  stripeTex.colorSpace = THREE.SRGBColorSpace;
+  const skinTex = new THREE.CanvasTexture(skin);
+  skinTex.colorSpace = THREE.SRGBColorSpace;
   const tube = shadowed(new THREE.Mesh(
-    new THREE.TorusGeometry(R - TUBE, TUBE, 16, 64).rotateX(Math.PI / 2),
-    mat('#ffffff', { map: stripeTex, roughness: 0.45 }),
+    new THREE.TorusGeometry(R - TUBE, TUBE, 18, 72).rotateX(Math.PI / 2),
+    mat('#ffffff', { map: skinTex, roughness: 0.55 }),
   ));
-  tube.position.y = 0.32;
+  tube.position.y = 0.3;
   deck.add(tube);
-  const floor = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(R - TUBE, R - TUBE - 0.05, 0.12, 48), mat('#e4e8ee', { roughness: 0.7 })));
-  floor.position.y = 0.12;
+  const floor = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(R - TUBE, R - TUBE - 0.08, 0.14, 48), mat('#2f3540', { roughness: 0.9 })));
+  floor.position.y = 0.1;
   deck.add(floor);
-  const rope = new THREE.Mesh(new THREE.TorusGeometry(R + 0.01, 0.035, 6, 64).rotateX(Math.PI / 2), mat('#2b2f36', { roughness: 0.9 }));
-  rope.position.y = 0.36;
+  const rope = new THREE.Mesh(new THREE.TorusGeometry(R + 0.01, 0.03, 6, 64).rotateX(Math.PI / 2), mat('#1f2329', { roughness: 0.9 }));
+  rope.position.y = 0.42;
   deck.add(rope);
   for (let k = 0; k < 8; k++) {
     // little rope loops (the handles) around the outside of the tube
     const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
     const loop = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.03, 6, 12), mat('#2b2f36'));
-    loop.position.set(Math.cos(a) * (R + 0.04), 0.28, -Math.sin(a) * (R + 0.04));
+    loop.position.set(Math.cos(a) * (R + 0.04), 0.32, -Math.sin(a) * (R + 0.04));
     loop.rotation.y = a + Math.PI / 2;
     deck.add(loop);
   }
@@ -476,8 +484,8 @@ export function createRenderer(container) {
       const walk = arc.full ? [arc.lo, arc.hi] : [arc.min, arc.max];
       // the slice on the floor (faint) and the part you can walk along on top of the tube
       for (const [from, to, opacity, inner, outer, y] of [
-        [arc.lo, arc.hi, 0.35, 0.45, R - TUBE * 2, 0.19],
-        [walk[0], walk[1], 0.8, RAFT.rim - 0.09, RAFT.rim + 0.09, 0.64],
+        [arc.lo, arc.hi, 0.45, 0.45, R - TUBE * 2, 0.18],
+        [walk[0], walk[1], 0.8, RAFT.rim - 0.09, RAFT.rim + 0.09, 0.63],
       ]) {
         const band = new THREE.Mesh(
           new THREE.RingGeometry(inner, outer, arc.full ? 64 : 24, 1, from, to - from).rotateX(-Math.PI / 2),
