@@ -211,3 +211,47 @@ input {
 .tabs { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .tabs button { padding: 5px 10px; font-size: 12px; border-radius: 999px; }
 .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+/* name tags that follow each player on the raft */
+.tag-layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.name-tag {
+  position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 4px; white-space: nowrap;
+  max-width: 140px; padding: 2px 7px; border-radius: 999px; background: var(--c); color: #fff;
+  font: 800 11px/1.3 ui-rounded, 'SF Pro Rounded', system-ui, sans-serif; letter-spacing: 0.2px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3); opacity: 0.92; box-shadow: 0 1px 4px rgba(18, 48, 74, 0.25);
+}
+.name-tag span { overflow: hidden; text-overflow: ellipsis; }
+.name-tag b { display: none; }
+.name-tag.mine { box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(18, 48, 74, 0.35); opacity: 1; z-index: 1; }
+.name-tag.you b {
+  display: inline-block; background: #fff; color: var(--c); border-radius: 999px; padding: 0 5px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; text-shadow: none;
+}
+
+/* F1-style start lights */
+.start-lights {
+  position: absolute; top: 96px; left: 50%; transform: translateX(-50%) scale(0.9);
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 250px; padding: 12px 14px 8px;
+  background: linear-gradient(#26292e, #15171a); border-radius: 16px; border: 2px solid #3a3e45;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); opacity: 0; transition: opacity 0.2s, transform 0.2s;
+}
+.start-lights.show { opacity: 1; transform: translateX(-50%) scale(1); }
+.start-lights .pod {
+  display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 12px; background: #0d0e10;
+}
+.start-lights i {
+  display: block; width: 46px; height: 46px; border-radius: 50%; background: #2a2c30;
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.6); transition: background 0.08s, box-shadow 0.08s;
+}
+.start-lights .pod[data-state='red'] i { background: radial-gradient(circle at 35% 35%, #ff8a8a, #ff1e1e 55%, #b30000); box-shadow: 0 0 18px 4px rgba(255, 40, 40, 0.75); }
+.start-lights .pod[data-state='orange'] i { background: radial-gradient(circle at 35% 35%, #ffd38a, #ff9a1f 55%, #c46300); box-shadow: 0 0 18px 4px rgba(255, 154, 31, 0.75); }
+.start-lights .pod[data-state='green'] i { background: radial-gradient(circle at 35% 35%, #a8ffb8, #22d64a 55%, #0d8f2a); box-shadow: 0 0 22px 6px rgba(34, 214, 74, 0.8); }
+.start-lights .count {
+  width: 100%; text-align: center; color: #fff; font-weight: 900; font-size: 30px; line-height: 1.2;
+  font-variant-numeric: tabular-nums; letter-spacing: 1px;
+}
+.start-lights.go .count { color: #4ade80; }
+@media (max-width: 720px) {
+  .start-lights { width: 210px; gap: 8px; }
+  .start-lights i { width: 36px; height: 36px; }
+}

@@ -112,9 +112,65 @@ export function createAudio() {
     });
   }
 
+  // race start: a short beep per light, then a bright rising chord with a whoosh for GO
+  function startBeep() {
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'square';
+    o.frequency.value = 587; // D5
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.16, t + 0.01);
+    g.gain.setValueAtTime(0.16, t + 0.2);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    o.connect(g).connect(master);
+    o.start(t);
+    o.stop(t + 0.32);
+  }
+
+  function startGo() {
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime;
+    for (const [f, type, vol] of [[1175, 'square', 0.13], [1480, 'sawtooth', 0.06], [587, 'square', 0.08]]) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(f, t);
+      o.frequency.exponentialRampToValueAtTime(f * 1.06, t + 0.7);
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.015);
+      g.gain.setValueAtTime(vol, t + 0.55);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+      o.connect(g).connect(master);
+      o.start(t);
+      o.stop(t + 0.95);
+    }
+    // whoosh: filtered noise sweeping up
+    const src = ctx.createBufferSource();
+    const len = Math.floor(ctx.sampleRate * 0.8);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 1.2;
+    bp.frequency.setValueAtTime(400, t);
+    bp.frequency.exponentialRampToValueAtTime(3500, t + 0.6);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.12, t + 0.15);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+    src.connect(bp).connect(g).connect(master);
+    src.start(t);
+  }
+
   return {
     fartStart,
     fartEnd,
+    startBeep,
+    startGo,
     checkpoint: () => blip([660, 880], 0.1),
     finish: () => blip([523, 659, 784, 1047], 0.14),
     ouch: () => blip([220, 110], 0.16, 'sawtooth', 0.22),

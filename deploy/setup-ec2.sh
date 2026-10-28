@@ -62,7 +62,7 @@ if curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null; then
   echo
   URL="http://$IP"
   [[ "$PORT" != 80 ]] && URL="$URL:$PORT"
-  echo "Toot Raft is running: $URL"
+  echo "Bottoms Up! is running: $URL"
   echo "Logs:    sudo journalctl -u toot-raft -f"
   echo "Update:  bash deploy/update.sh"
 else

@@ -1,4 +1,4 @@
-// Toot Raft server: serves the built game, the leaderboard API and the WebSocket rooms
+// Bottoms Up! server: serves the built game, the leaderboard API and the WebSocket rooms
 // on one port. Every room's physics runs here; browsers only send their buttons.
 
 import http from 'node:http';
@@ -154,7 +154,7 @@ export async function startServer({
 
   await new Promise((ok) => server.listen(port, host, ok));
   const actualPort = server.address().port;
-  log(`Toot Raft server on http://${host}:${actualPort} (data in ${resolve(dataDir)})`);
+  log(`Bottoms Up! server on http://${host}:${actualPort} (data in ${resolve(dataDir)})`);
 
   return {
     port: actualPort,

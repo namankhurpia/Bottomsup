@@ -1,4 +1,7 @@
-# Deploying Toot Raft to EC2
+# Deploying Bottoms Up!
+
+(Internally the service, data folder and storage keys are still called `toot-raft`, the
+game's first name. They're left as-is so existing servers keep their scores.)
 
 One small server runs everything: the web page, the leaderboard API and the WebSocket rooms
 (each room's physics runs on the server). Scores are a SQLite file in `/var/lib/toot-raft`.
@@ -17,19 +20,19 @@ One small server runs everything: the web page, the leaderboard API and the WebS
 
 Either clone it from GitHub:
 
-    git clone https://github.com/<you>/toot-raft.git ~/toot-raft
+    git clone https://github.com/<you>/bottoms-up.git ~/bottoms-up
 
 or copy it straight from your Mac (skip the heavy folders):
 
     rsync -av --exclude node_modules --exclude dist --exclude data \
-      -e "ssh -i ~/.ssh/<your-key>.pem" ./ ec2-user@<ec2-ip>:~/toot-raft/
+      -e "ssh -i ~/.ssh/<your-key>.pem" ./ ec2-user@<ec2-ip>:~/bottoms-up/
 
 (`ec2-user` on Amazon Linux, `ubuntu` on Ubuntu.)
 
 ## 3. Install and start
 
     ssh -i ~/.ssh/<your-key>.pem ec2-user@<ec2-ip>
-    cd ~/toot-raft
+    cd ~/bottoms-up
     sudo bash deploy/setup-ec2.sh
 
 It installs Node 24 (official build, checksum-verified), runs `npm ci` + `npm run build`,
@@ -40,7 +43,7 @@ starts on boot. At the end it prints the URL. Send that to your friends.
 
 | What | Command |
 |---|---|
-| Deploy new code | `cd ~/toot-raft && bash deploy/update.sh` (after `git push`, or re-run the rsync first) |
+| Deploy new code | `cd ~/bottoms-up && bash deploy/update.sh` (after `git push`, or re-run the rsync first) |
 | Live logs | `sudo journalctl -u toot-raft -f` |
 | Restart | `sudo systemctl restart toot-raft` |
 | Health check | `curl localhost/api/health` |

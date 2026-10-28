@@ -1,4 +1,4 @@
-# Toot Raft
+# Bottoms Up!
 
 One to four players, one round raft, fart-powered propulsion. An original browser game inspired by
 the "co-op shared raft" idea. No code or assets from any other game.
@@ -7,7 +7,8 @@ the "co-op shared raft" idea. No code or assets from any other game.
 
 - **Online:** enter a name, create a room, and send the 4-digit code to up to 3 friends. While
   you wait you can all paddle around the practice pond. The host starts the race with however
-  many are there (1-4): 3-2-1, then level 1 against the clock. The rim is split evenly:
+  many are there (1-4): F1-style start lights (red, red, orange, green!), then level 1 against
+  the clock. Everyone gets a small name tag in their colour; yours says YOU. The rim is split evenly:
   alone you get all 360°, two players get a half each, three get 120° each, four a quarter.
 - **Solo practice:** one person controls all four (good for learning the level).
 

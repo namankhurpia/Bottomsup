@@ -11,6 +11,7 @@ import { createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { createHud, fmtMs, fmtTime } from './hud.js';
 import { createNet } from './net.js';
+import { createStartLights } from './lights.js';
 
 await RAPIER.init();
 
@@ -18,6 +19,7 @@ const $ = (id) => document.getElementById(id);
 const view = createRenderer($('game'));
 const audio = createAudio();
 const hud = createHud();
+const lights = createStartLights({ audio });
 
 let mode = null;
 let frameFn = () => {};
@@ -36,6 +38,7 @@ function setBodyClass(prefix, value) {
 }
 function setMode(m) {
   mode = m;
+  lights.hide();
   setBodyClass('mode-', m);
   if (m !== 'online') setBodyClass('phase-', null);
 }
@@ -91,7 +94,7 @@ function commonEvents(events) {
 function toMenu() {
   setMode('menu');
   input.setSeat(null);
-  view.setSeats(null);
+  view.setSeats(null, { tags: false }); // the menu backdrop has no tags
   hud.hideMessage();
   // attract mode: someone toots now and then so the pond looks alive
   let t = 0;
@@ -137,8 +140,19 @@ function startSolo() {
   hud.setLevel(LEVELS.canal);
   $('best').textContent = best ? fmtTime(best) : '—';
   const startCp = Number(new URLSearchParams(location.search).get('cp')) || 0;
+  // start lights: everyone sits still for 3 s, then the clock starts at GO
+  let countdown = 3 * 60;
+  const still = Array.from({ length: NUM_PLAYERS }, () => ({ aim: 0, fart: false, move: 0 }));
   const step = runLocal('canal', {
-    commands: (s) => input.getCommands(DT, s),
+    commands: (s) => {
+      if (countdown <= 0) return input.getCommands(DT, s);
+      countdown--;
+      if (countdown === 0) {
+        local.sim.go();
+        lights.set(0);
+      } else lights.set(Math.ceil(countdown / 60));
+      return still;
+    },
     onEvents: (events, s) => {
       soundsFor(events);
       commonEvents(events);
@@ -160,7 +174,7 @@ function startSolo() {
     },
   });
   if (startCp) local.sim.restart(startCp), (local.prev = local.curr = local.sim.snapshot());
-  hud.showMessage('Ready?', 'Fart to start the clock');
+  hud.hideMessage();
   $('help').classList.remove('hidden');
   frameFn = (dt) => {
     const { prev, curr, alpha } = step(dt);
@@ -230,7 +244,7 @@ function applyRoom(room) {
   setBodyClass('phase-', room.phase);
   if (room.phase === 'countdown' && was !== 'countdown') input.setSeat(online.seat); // everyone starts facing the centre
   if (room.phase === 'lobby') {
-    if (was && was !== 'lobby') hud.hideMessage();
+    if (was && was !== 'lobby') hud.hideMessage(), lights.hide();
     renderLobby(room);
   }
   if (room.phase === 'results' && was !== 'results') {
@@ -300,7 +314,7 @@ function receiveSnap(m) {
   soundsFor(m.ev, { skipSeat: online.seat });
   commonEvents(m.ev);
   for (const e of m.ev) {
-    if (e.type === 'go' && m.phase === 'race') hud.showMessage('GO!', '', 800); // the pond's first fart also says 'go'
+    if (e.type === 'go' && m.phase === 'race') lights.set(0); // the pond's first fart also says 'go'
   }
 }
 
@@ -329,7 +343,8 @@ function onlineFrame(dt, now) {
     const n = Math.ceil(latest.cd / 60);
     if (n !== online.lastCount && n > 0) {
       online.lastCount = n;
-      hud.showMessage(String(n), n === 3 ? 'Get ready to toot' : '');
+      hud.hideMessage();
+      lights.set(n);
     }
   } else online.lastCount = null;
 

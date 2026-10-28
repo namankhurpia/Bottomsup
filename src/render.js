@@ -368,6 +368,10 @@ export function createRenderer(container) {
   flash.position.y = 0.42;
   deck.add(flash);
 
+  const tagLayer = document.createElement('div');
+  tagLayer.className = 'tag-layer';
+  container.append(tagLayer);
+
   const crew = PLAYER_COLORS.map((hex, i) => {
     const color = new THREE.Color(hex);
     const g = new THREE.Group();
@@ -412,44 +416,40 @@ export function createRenderer(container) {
       new THREE.ConeGeometry(0.16, 0.3, 4).rotateX(Math.PI),
       new THREE.MeshBasicMaterial({ color }),
     );
-    marker.position.y = 1.45;
+    marker.position.y = 1.9;
     g.add(marker);
 
-    // name tag (only shown online)
-    const tagCanvas = document.createElement('canvas');
-    tagCanvas.width = 256;
-    tagCanvas.height = 64;
-    const tagTex = new THREE.CanvasTexture(tagCanvas);
-    tagTex.colorSpace = THREE.SRGBColorSpace;
-    const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tagTex, depthTest: false, transparent: true }));
-    tag.scale.set(1.9, 0.475, 1);
-    tag.position.y = 2.05;
-    tag.renderOrder = 10;
-    tag.visible = false;
-    g.add(tag);
+    // name tag: a small HTML pill in the player's colour that follows their head on screen
+    // (HTML so it stays crisp and readable at any camera distance)
+    const tag = document.createElement('div');
+    tag.className = 'name-tag';
+    tag.style.setProperty('--c', hex);
+    const tagYou = document.createElement('b');
+    tagYou.textContent = 'you';
+    const tagName = document.createElement('span');
+    tag.append(tagYou, tagName);
+    tagLayer.append(tag);
 
-    return { g, ring, arrow, body, marker, tag, tagCanvas, tagTex, hex, squash: 0, occupied: true, drop: 1 };
+    return { g, ring, arrow, body, marker, tag, tagName, hex, squash: 0, occupied: true, drop: 1, tagKey: '', label: `P${i + 1}` };
   });
 
-  function drawTag(c, text, filled) {
-    const g = c.tagCanvas.getContext('2d');
-    g.clearRect(0, 0, 256, 64);
-    g.font = '700 30px ui-rounded, system-ui, sans-serif';
-    const w = Math.min(244, g.measureText(text).width + 32);
-    g.fillStyle = filled ? c.hex : 'rgba(255,255,255,0.7)';
-    g.beginPath();
-    g.roundRect((256 - w) / 2, 8, w, 48, 24);
-    g.fill();
-    g.fillStyle = filled ? '#ffffff' : '#5b7186';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText(text, 128, 33, 220);
-    c.tagTex.needsUpdate = true;
+  // mine = this is you (online: "you" badge) or the player you're steering (solo: outline)
+  function drawTag(c, text, mine, online) {
+    const key = `${text}|${mine}|${online}`;
+    if (key === c.tagKey) return;
+    c.tagKey = key;
+    c.tagName.textContent = text; // other people's names: text only, never HTML
+    c.tag.classList.toggle('mine', mine);
+    c.tag.classList.toggle('you', mine && online);
   }
 
-  // seats: null (solo: everyone present, no tags) or [{ name, occupied }] for online rooms.
-  // A seat that becomes occupied plays a drop-in-and-bounce.
-  function setSeats(seats) {
+  // seats: null (solo / menu: everyone present, tags read P1-P4) or [{ name, occupied }]
+  // for online rooms. A seat that becomes occupied plays a drop-in-and-bounce.
+  let tagsOn = true;
+  let tagsOnline = false;
+  function setSeats(seats, { tags = true } = {}) {
+    tagsOn = tags;
+    tagsOnline = !!seats;
     crew.forEach((c, i) => {
       const seat = seats && seats[i];
       const occupied = !seats || !!(seat && seat.occupied);
@@ -457,8 +457,8 @@ export function createRenderer(container) {
       c.occupied = occupied;
       c.body.visible = occupied;
       c.arrow.visible = occupied;
-      c.tag.visible = !!seats;
-      if (seats) drawTag(c, occupied ? seat.name : 'waiting…', occupied);
+      c.label = seats ? (occupied ? seat.name : '') : `P${i + 1}`;
+      c.tagKey = '';
     });
   }
 
@@ -530,7 +530,10 @@ export function createRenderer(container) {
       c.body.rotation.y = lerpAngle(c.body.rotation.y, aim, 1 - Math.exp(-frameDt * 18));
       const active = input.group || input.active === i;
       c.marker.visible = active;
-      c.marker.position.y = 1.45 + Math.sin(time * 5) * 0.08;
+      c.marker.position.y = 1.9 + Math.sin(time * 5) * 0.08;
+      const showTag = tagsOn && c.occupied && !!c.label;
+      c.tagShown = showTag;
+      if (showTag) drawTag(c, c.label, tagsOnline ? input.seat === i : active, tagsOnline);
       c.ring.material.opacity = active ? 1 : 0.35;
       c.arrow.scale.setScalar(active ? 1.15 : 0.85);
       c.arrow.material.opacity = pl.empty ? 0.25 : 0.95;
@@ -604,6 +607,30 @@ export function createRenderer(container) {
     sun.target.position.copy(camTarget);
 
     renderer.render(scene, camera);
+    placeTags();
+  }
+
+  // pin each name tag just above its player's head, in screen pixels
+  const head = new THREE.Vector3();
+  function placeTags() {
+    for (const c of crew) {
+      const on = c.tagShown && c.g.visible && raft.visible;
+      if (!on) {
+        c.tag.style.display = 'none';
+        continue;
+      }
+      c.body.getWorldPosition(head);
+      head.y += 1.25;
+      head.project(camera);
+      if (head.z > 1) {
+        c.tag.style.display = 'none';
+        continue;
+      }
+      c.tag.style.display = '';
+      const x = ((head.x + 1) / 2) * innerWidth;
+      const y = ((1 - head.y) / 2) * innerHeight;
+      c.tag.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
+    }
   }
 
   function screenToWorld(sx, sy) {

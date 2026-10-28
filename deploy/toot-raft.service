@@ -1,7 +1,7 @@
 # Template: deploy/setup-ec2.sh fills in the @...@ values and installs it as
 # /etc/systemd/system/toot-raft.service
 [Unit]
-Description=Toot Raft game server
+Description=Bottoms Up! game server
 After=network-online.target
 Wants=network-online.target
 
