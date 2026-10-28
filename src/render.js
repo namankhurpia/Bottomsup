@@ -5,7 +5,8 @@ import * as THREE from 'three';
 import { ALL_SEATS, NUM_PLAYERS, RAFT, arcFor, seatAt } from './sim/sim.js';
 
 export const PLAYER_COLORS = ['#ff5a5f', '#3fa7ff', '#ffc93c', '#5ad16a'];
-const DECK_Y = 0.5; // the crew sit on the raft's tube
+const DECK_Y = 0.42; // the crew sit on the raft's tube
+const CREW_SCALE = 0.85; // a little smaller than the raft's tube is wide, so they look seated in it
 
 export function createRenderer(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -422,45 +423,89 @@ export function createRenderer(container) {
   scene.add(raft);
   // round deck: plank texture on the top, a log rim, and each player's quarter marked on the rim
   const R = RAFT.radius;
-  // a whitewater raft: one bold orange tube with a thin white stripe round its outside and
-  // seams between the air chambers, sitting low in the water with a dark rubber floor
-  const TUBE = 0.32; // tube thickness (radius)
+  // a whitewater raft: a matte orange tube (darker underneath, white stripe, chamber seams),
+  // a raised drop-stitch floor so the inside reads as a tub, two inflated thwarts across the
+  // middle, a grab rope, and a faint wake where it sits in the water
+  const TUBE = 0.3; // tube thickness (radius)
   const skin = document.createElement('canvas');
-  skin.width = 512; // around the raft
-  skin.height = 64; // around the tube; the top and bottom rows are the tube's outer side
+  skin.width = 1024; // around the raft
+  skin.height = 128; // around the tube: rows 0/128 = outer side, 32 = top, 64 = inner side, 96 = underside
   {
     const g = skin.getContext('2d');
-    const grad = g.createLinearGradient(0, 0, 0, 64);
-    grad.addColorStop(0, '#ff6a13');
-    grad.addColorStop(0.5, '#ff8a3a'); // a touch lighter on top, like sun on rubber
-    grad.addColorStop(1, '#ff6a13');
+    const grad = g.createLinearGradient(0, 0, 0, 128);
+    grad.addColorStop(0, '#ee5b16');
+    grad.addColorStop(0.25, '#ff7a26');
+    grad.addColorStop(0.5, '#e4521a');
+    grad.addColorStop(0.78, '#9c3a0e');
+    grad.addColorStop(1, '#ee5b16');
     g.fillStyle = grad;
-    g.fillRect(0, 0, 512, 64);
-    g.fillStyle = '#ffffff';
-    g.fillRect(0, 0, 512, 4); // the white stripe along the outer side
-    g.fillRect(0, 60, 512, 4);
-    g.fillStyle = 'rgba(90, 30, 0, 0.45)';
-    for (let k = 0; k < 4; k++) g.fillRect(k * 128 + 64, 0, 3, 64); // seams between the 4 air chambers
+    g.fillRect(0, 0, 1024, 128);
+    g.fillStyle = '#f4f4f4';
+    g.fillRect(0, 0, 1024, 5); // white stripe along the outer side
+    g.fillRect(0, 123, 1024, 5);
+    g.fillStyle = 'rgba(70, 20, 0, 0.35)';
+    for (let k = 0; k < 4; k++) g.fillRect(k * 256 + 128, 0, 4, 128); // seams between the 4 air chambers
+    // white bands wrapping round the tube, like the reflective tape on a real raft
+    g.fillStyle = '#f7f7f7';
+    for (let k = 0; k < 8; k++) g.fillRect(k * 128 + 54, 0, 20, 128);
   }
   const skinTex = new THREE.CanvasTexture(skin);
   skinTex.colorSpace = THREE.SRGBColorSpace;
-  const tube = shadowed(new THREE.Mesh(
-    new THREE.TorusGeometry(R - TUBE, TUBE, 18, 72).rotateX(Math.PI / 2),
-    mat('#ffffff', { map: skinTex, roughness: 0.55 }),
-  ));
-  tube.position.y = 0.3;
+  skinTex.anisotropy = 4;
+  const rubber = mat('#ffffff', { map: skinTex, roughness: 0.75 });
+  const tube = shadowed(new THREE.Mesh(new THREE.TorusGeometry(R - TUBE, TUBE, 20, 96).rotateX(Math.PI / 2), rubber));
+  tube.position.y = 0.26;
   deck.add(tube);
-  const floor = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(R - TUBE, R - TUBE - 0.08, 0.14, 48), mat('#2f3540', { roughness: 0.9 })));
-  floor.position.y = 0.1;
+
+  // drop-stitch floor, raised to the tube's middle so the inside looks like a tub
+  const floorCanvas = document.createElement('canvas');
+  floorCanvas.width = floorCanvas.height = 256;
+  {
+    const g = floorCanvas.getContext('2d');
+    g.fillStyle = '#56606d';
+    g.fillRect(0, 0, 256, 256);
+    g.fillStyle = 'rgba(0, 0, 0, 0.22)';
+    for (let y = 8; y < 256; y += 16) for (let x = (y / 16) % 2 ? 8 : 0; x < 256; x += 16) g.fillRect(x, y, 3, 3);
+  }
+  const floorTex = new THREE.CanvasTexture(floorCanvas);
+  floorTex.colorSpace = THREE.SRGBColorSpace;
+  const floor = shadowed(new THREE.Mesh(
+    new THREE.CylinderGeometry(R - TUBE * 1.5, R - TUBE * 1.5, 0.16, 48),
+    [mat('#3c434d'), mat('#ffffff', { map: floorTex, roughness: 0.95 }), mat('#3c434d')],
+  ));
+  floor.position.y = 0.18;
   deck.add(floor);
-  const rope = new THREE.Mesh(new THREE.TorusGeometry(R + 0.01, 0.03, 6, 64).rotateX(Math.PI / 2), mat('#1f2329', { roughness: 0.9 }));
-  rope.position.y = 0.42;
+
+  // two inflated thwarts (cross tubes) across the middle, like a real raft
+  const thwartMat = mat('#e8571a', { roughness: 0.75 });
+  for (const a of [Math.PI / 4, -Math.PI / 4]) {
+    const t = shadowed(new THREE.Mesh(new THREE.CapsuleGeometry(0.15, (R - TUBE) * 2 - 0.4, 6, 12).rotateZ(Math.PI / 2), thwartMat));
+    t.position.y = 0.32;
+    t.rotation.y = a;
+    deck.add(t);
+  }
+
+  // a faint wake where the raft sits in the water, and a soft dark patch under it
+  const foam = new THREE.Mesh(
+    new THREE.RingGeometry(R - 0.05, R + 0.22, 64).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.22, depthWrite: false }),
+  );
+  foam.position.y = 0.03;
+  raft.add(foam);
+  const underShadow = new THREE.Mesh(
+    new THREE.CircleGeometry(R + 0.2, 48).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: '#0b3a5c', transparent: true, opacity: 0.22, depthWrite: false }),
+  );
+  underShadow.position.y = 0.02;
+  raft.add(underShadow);
+  const rope = new THREE.Mesh(new THREE.TorusGeometry(R - 0.02, 0.025, 6, 72).rotateX(Math.PI / 2), mat('#1f2329', { roughness: 0.9 }));
+  rope.position.y = 0.36;
   deck.add(rope);
   for (let k = 0; k < 8; k++) {
     // little rope loops (the handles) around the outside of the tube
     const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
     const loop = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.03, 6, 12), mat('#2b2f36'));
-    loop.position.set(Math.cos(a) * (R + 0.04), 0.32, -Math.sin(a) * (R + 0.04));
+    loop.position.set(Math.cos(a) * (R + 0.02), 0.28, -Math.sin(a) * (R + 0.02));
     loop.rotation.y = a + Math.PI / 2;
     deck.add(loop);
   }
@@ -484,8 +529,8 @@ export function createRenderer(container) {
       const walk = arc.full ? [arc.lo, arc.hi] : [arc.min, arc.max];
       // the slice on the floor (faint) and the part you can walk along on top of the tube
       for (const [from, to, opacity, inner, outer, y] of [
-        [arc.lo, arc.hi, 0.45, 0.45, R - TUBE * 2, 0.18],
-        [walk[0], walk[1], 0.8, RAFT.rim - 0.09, RAFT.rim + 0.09, 0.63],
+        [arc.lo, arc.hi, 0.14, 0.3, R - TUBE * 1.5, 0.27],
+        [walk[0], walk[1], 0.7, RAFT.rim - 0.06, RAFT.rim + 0.06, 0.57],
       ]) {
         const band = new THREE.Mesh(
           new THREE.RingGeometry(inner, outer, arc.full ? 64 : 24, 1, from, to - from).rotateX(-Math.PI / 2),
@@ -496,8 +541,9 @@ export function createRenderer(container) {
       }
       if (arc.full) continue;
       // divider at the start of this slice
-      const spoke = new THREE.Mesh(new THREE.BoxGeometry(R - TUBE * 2 - 0.3, 0.03, 0.06), woodDark);
-      spoke.position.set(Math.cos(arc.lo) * ((R - TUBE * 2) / 2 + 0.15), 0.2, -Math.sin(arc.lo) * ((R - TUBE * 2) / 2 + 0.15));
+      // a faint seam on the floor between slices
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(R - TUBE * 1.5 - 0.2, 0.02, 0.04), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.2 }));
+      spoke.position.set(Math.cos(arc.lo) * ((R - TUBE * 1.5) / 2 + 0.1), 0.27, -Math.sin(arc.lo) * ((R - TUBE * 1.5) / 2 + 0.1));
       spoke.rotation.y = arc.lo;
       zones.add(spoke);
     }
@@ -675,14 +721,17 @@ export function createRenderer(container) {
       const showTag = tagsOn && c.occupied && !!c.label;
       c.tagShown = showTag;
       if (showTag) drawTag(c, c.label, tagsOnline ? input.seat === i : active, tagsOnline);
-      c.ring.material.opacity = active ? 1 : 0.35;
-      c.arrow.scale.setScalar(active ? 1.15 : 0.85);
-      c.arrow.material.opacity = pl.empty ? 0.25 : 0.95;
+      c.ring.visible = false; // the tube band and name tag already say whose spot this is
+      // the aim arrow only matters once you've turned away from facing the centre
+      const turned = Math.abs(Math.atan2(Math.sin(pl.aim), Math.cos(pl.aim))) > 0.08;
+      c.arrow.visible = c.occupied && turned;
+      c.arrow.scale.setScalar(0.75);
+      c.arrow.material.opacity = pl.empty ? 0.25 : 0.85;
 
       if (pl.farting) c.squash = Math.max(c.squash, pl.burst > 0 ? 1 : 0.45);
       c.squash = Math.max(0, c.squash - frameDt * 4);
       const sq = c.squash;
-      c.body.scale.set(1 + sq * 0.18, 1 - sq * 0.22, 1 + sq * 0.18);
+      c.body.scale.set((1 + sq * 0.18) * CREW_SCALE, (1 - sq * 0.22) * CREW_SCALE, (1 + sq * 0.18) * CREW_SCALE);
       c.body.position.y = pl.farting ? Math.abs(Math.sin(time * 40)) * 0.04 : 0;
       if (c.drop < 1) {
         // drop onto the raft and bounce: falls from 4 m, lands at 45%, two little bounces
@@ -690,7 +739,6 @@ export function createRenderer(container) {
         c.body.position.y += 4 * dropCurve(c.drop);
         if (c.drop > 0.45 && c.drop < 0.6) c.squash = 1;
       }
-      c.ring.material.opacity = c.occupied ? c.ring.material.opacity : 0.2;
 
       if (pl.farting) {
         // world-space thrust direction; the puff goes the other way
@@ -791,8 +839,9 @@ export function createRenderer(container) {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
-    // keep the course readable on tall phone screens
+    // keep the course readable on tall phone screens (?cam=close: a close-up, for screenshots)
     camOffset.set(0, camera.aspect < 1 ? 32 : 24, camera.aspect < 1 ? 18 : 15);
+    if (new URLSearchParams(location.search).get('cam') === 'close') camOffset.multiplyScalar(0.35);
   });
   dispatchEvent(new Event('resize'));
 

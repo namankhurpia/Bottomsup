@@ -356,3 +356,12 @@ body.touch.phase-lobby .players { display: none; }
   body.touch .title { padding: 6px 10px; font-size: 15px; }
   body.touch .start-lights { top: 130px; }
 }
+
+/* minimal controls reminder while playing (keyboard players; H still opens the full help) */
+.controls-hint {
+  position: absolute; right: 16px; bottom: 128px; display: grid; gap: 6px; padding: 8px 10px;
+  border-radius: 12px; background: rgba(255, 255, 255, 0.55); font-size: 12px; font-weight: 700;
+  color: var(--muted); opacity: 0.85;
+}
+.controls-hint kbd { margin-right: 4px; }
+body.mode-menu .controls-hint, body.touch .controls-hint, body.phase-results .controls-hint { display: none; }

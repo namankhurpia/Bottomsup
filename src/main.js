@@ -210,7 +210,7 @@ function startSolo(levelId = soloLevel) {
   });
   if (startCp) local.sim.restart(startCp), (local.prev = local.curr = local.sim.snapshot());
   hud.hideMessage();
-  $('help').classList.toggle('hidden', isTouch); // phones: the controls are on screen instead
+  $('help').classList.add('hidden'); // the small controls hint is enough; H opens the full help
   frameFn = (dt) => {
     const { prev, curr, alpha } = step(dt);
     view.render(prev, curr, alpha, dt, input.state);
