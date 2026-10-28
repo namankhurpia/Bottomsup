@@ -540,6 +540,17 @@ $('again').onclick = () => net.send({ t: 'start', level: online.room.result.leve
 $('next-level').onclick = () => net.send({ t: 'start', level: nextLevel(online.room.result.level) });
 $('open-levels').onclick = () => showPage('levels');
 $('open-history').onclick = () => showPage('history');
+
+// about popup: closes with the ×, Esc or a click outside the card
+const about = $('about');
+const closeAbout = () => (about.hidden = true);
+$('open-about').onclick = () => {
+  about.hidden = false;
+  $('about-close').focus();
+};
+$('about-close').onclick = closeAbout;
+about.addEventListener('click', (e) => e.target === about && closeAbout());
+addEventListener('keydown', (e) => e.key === 'Escape' && !about.hidden && closeAbout());
 for (const b of document.querySelectorAll('[data-back]')) b.onclick = () => showPage(null);
 
 // --- menu pages: levels and race history --------------------------------------------------

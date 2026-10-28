@@ -402,3 +402,19 @@ body.touch #lobby .journey { margin: 2px auto 4px; }
 
 .journey-across .label b { font-size: 11px; }
 .journey-across .label small { font-size: 10px; }
+
+/* about popup */
+.modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(18, 48, 74, 0.35); }
+.modal[hidden] { display: none; }
+.about-card { position: relative; width: 380px; max-width: 100%; text-align: center; animation: pop-in 0.18s ease-out; }
+@keyframes pop-in { from { transform: scale(0.94); opacity: 0; } }
+.about-card .close { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; padding: 0; border-radius: 50%; font-size: 18px; line-height: 1; }
+.about-emoji { font-size: 40px; margin-top: 4px; }
+.about-card h2 { margin: 4px 0 8px; font-size: 22px; font-weight: 900; }
+.about-card p { margin: 0 0 10px; font-size: 14px; line-height: 1.45; }
+.about-card .gh {
+  display: inline-flex; align-items: center; gap: 8px; margin: 4px 0 12px; padding: 8px 14px; border-radius: 999px;
+  background: #24292f; color: #fff; text-decoration: none; font-weight: 800; font-size: 14px;
+}
+.about-card .gh:hover { background: #32383f; }
+.about-card .made { font-size: 13px; font-weight: 700; color: var(--muted); margin: 0; }
