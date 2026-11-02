@@ -37,7 +37,7 @@ other and nothing happens. **The secret isn't farting harder, it's farting toget
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/level5.jpg" alt="Level 5, The Holey Road: dark holes in the track with arrows pointing into them"><br><b>The Holey Road.</b> Holes that drag you in if you get close. Even the rubber ducks can't escape.</td>
-    <td width="50%"><img src="docs/screenshots/history.jpg" alt="The top races page: total races and the ten highest scores"><br><b>Top races.</b> The total races run, and the ten highest scores.</td>
+    <td width="50%"><img src="docs/screenshots/history.jpg" alt="The top races page: total races, the top score and the ten best races with their levels"><br><b>Top races.</b> The ten best races. The furthest level always ranks first, then the most points.</td>
   </tr>
 </table>
 

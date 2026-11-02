@@ -6,6 +6,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { LEVELS } from '../src/sim/levels.js';
 
 const today = () => new Date().toISOString().slice(0, 10); // UTC
 
@@ -71,9 +72,11 @@ export function openDb(dataDir) {
     SELECT g.level, MIN(g.time_ms) AS best_ms, MAX(g.points) AS best_points, COUNT(*) AS races
     FROM games g, json_each(g.players) p WHERE lower(p.value) = lower(?) GROUP BY g.level`);
   const totals = db.prepare(`SELECT COUNT(*) AS n FROM games`);
+  // the furthest level always ranks first, however slowly it was finished; points only decide within a level
+  const levelRank = Object.values(LEVELS).filter((l) => l.number).map((l) => `WHEN '${l.id}' THEN ${l.number}`).join(' ');
   const topRaces = db.prepare(`
     SELECT id, level, room, players, crew_size, time_ms, points, deaths, finished_at
-    FROM games ORDER BY points DESC, finished_at ASC LIMIT ?`);
+    FROM games ORDER BY CASE level ${levelRank} ELSE 0 END DESC, points DESC, finished_at ASC LIMIT ?`);
 
   const row = (r) => ({ ...r, players: JSON.parse(r.players) });
 
@@ -96,10 +99,9 @@ export function openDb(dataDir) {
       if (name) for (const r of cleared.all(name)) out[r.level] = { best_ms: r.best_ms, best_points: r.best_points, races: r.races };
       return out;
     },
-    // how many races have been run, and the highest scoring ones across every level and crew
+    // how many races have been run, and the best ones: furthest level first, then most points
     history(limit = 10) {
-      const games = topRaces.all(limit).map(row);
-      return { total: totals.get().n, topPoints: games[0]?.points ?? 0, games };
+      return { total: totals.get().n, games: topRaces.all(limit).map(row) };
     },
     recordVisit(ip, userAgent, day = today()) {
       addView.run(day);

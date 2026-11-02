@@ -169,6 +169,7 @@ input {
 .board-table td.num { text-align: right; font-weight: 800; }
 .board-table tr.mine td { background: rgba(255, 138, 61, 0.16); }
 .board-table .crew { font-weight: 700; }
+.board-table .level { white-space: nowrap; }
 .board-table .when { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .board-table .empty-row td { color: var(--muted); text-align: center; padding: 14px; }
 

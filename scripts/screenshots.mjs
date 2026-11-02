@@ -27,9 +27,11 @@ const seed = [
   ['canal', ['Solo Steve'], 96000, 'Oct 24'],
   ['plank', ['Zoe', 'Kai', 'Lena', 'Omar'], 74800, 'Oct 25'],
   ['canal', ['Mia', 'Raj', 'Tom'], 77300, 'Oct 26'],
+  ['inferno', ['Zoe', 'Kai', 'Lena', 'Omar'], 412000, 'Oct 27'],
+  ['wells', ['Mia', 'Raj', 'Tom'], 118000, 'Oct 28'],
 ];
 seed.forEach(([level, players, timeMs], i) => {
-  const par = { canal: 75, plank: 70 }[level];
+  const par = LEVELS[level].par;
   server.db.saveGame({ level, room: '1234', players, crewSize: players.length, timeMs, points: Math.round((1000 * par * 1000) / timeMs), deaths: i % 3, startedAt: day(20 + i, 18), finishedAt: day(20 + i, 19) });
 });
 

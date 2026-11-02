@@ -186,10 +186,15 @@ try {
   const lb1 = await (await fetch(`http://127.0.0.1:${server.port}/api/leaderboard?level=canal&crew=1`)).json();
   check(!lb1.top.some((g) => g.id === r.id), '4-player games stay off the solo leaderboard');
   const hist = await (await fetch(`http://127.0.0.1:${server.port}/api/history`)).json();
-  check(hist.total === 2 && hist.games.length === 2 && hist.topPoints === hist.games[0].points && hist.games[0].points >= hist.games[1].points && !('byLevel' in hist) && !('mine' in hist),
-    'top races API gives the total and the races, highest score first, with no per-player or per-level counts');
+  check(hist.total === 2 && hist.games.length === 2 && hist.games[0].points >= hist.games[1].points && !('byLevel' in hist) && !('mine' in hist),
+    'top races API gives the total and the races, most points first within a level, with no per-player or per-level counts');
   for (let i = 0; i < 12; i++) server.db.saveGame({ level: 'canal', room: '0000', players: ['Filler'], crewSize: 1, timeMs: 60000, points: 5 + i, deaths: 0, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() });
-  check((await (await fetch(`http://127.0.0.1:${server.port}/api/history`)).json()).games.length === 10, 'top races stops at 10');
+  const save = (level, points) => server.db.saveGame({ level, room: '0000', players: ['Slowpoke'], crewSize: 1, timeMs: 600000, points, deaths: 0, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() });
+  save('wells', 500);
+  save('inferno', 1);
+  const ranked = (await (await fetch(`http://127.0.0.1:${server.port}/api/history`)).json()).games;
+  check(ranked.length === 10, 'top races stops at 10');
+  check(ranked[0].level === 'inferno' && ranked[0].points === 1 && ranked[1].level === 'wells', 'the furthest level ranks first, however few points it scored');
 
   a.inbox.length = 0;
   a.send({ t: 'lobby' });

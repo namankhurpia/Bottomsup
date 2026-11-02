@@ -639,7 +639,9 @@ async function renderHistoryPage() {
     return;
   }
   stats.textContent = '';
-  for (const [k, v] of [['Total races', h.total], ['Most points', h.topPoints]]) {
+  const levelOf = (g) => (LEVELS[g.level]?.number ? `Level ${LEVELS[g.level].number}` : g.level);
+  const best = h.games[0];
+  for (const [k, v] of [['Total races', h.total], [best ? `Top score · ${levelOf(best)}` : 'Top score', best ? best.points : 0]]) {
     const d = document.createElement('div');
     d.className = 'stat';
     const vv = document.createElement('div');
@@ -653,7 +655,7 @@ async function renderHistoryPage() {
   }
   table.textContent = '';
   const head = table.insertRow();
-  for (const [t, cls] of [['#', ''], ['Crew', ''], ['Time', 'num'], ['Points', 'num']]) {
+  for (const [t, cls] of [['#', ''], ['Crew', ''], ['Level', 'level'], ['Time', 'num'], ['Points', 'num']]) {
     const th = document.createElement('th');
     th.textContent = t;
     th.className = cls;
@@ -661,14 +663,14 @@ async function renderHistoryPage() {
   }
   if (!h.games.length) {
     const td = table.insertRow().insertCell();
-    td.colSpan = 4;
+    td.colSpan = 5;
     td.textContent = 'No races yet.';
     td.parentElement.className = 'empty-row';
     return;
   }
   h.games.forEach((g, i) => {
     const tr = table.insertRow();
-    for (const [text, cls] of [[String(i + 1), ''], [g.players.join(', '), 'crew'], [fmtMs(g.time_ms), 'num'], [String(g.points), 'num']]) {
+    for (const [text, cls] of [[String(i + 1), ''], [g.players.join(', '), 'crew'], [levelOf(g), 'level'], [fmtMs(g.time_ms), 'num'], [String(g.points), 'num']]) {
       const td = tr.insertCell();
       td.textContent = text;
       td.className = cls;

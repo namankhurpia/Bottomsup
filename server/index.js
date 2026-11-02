@@ -82,7 +82,7 @@ export async function startServer({
         const cleared = db.progress(name);
         return json(res, { name, cleared, unlocked: unlockedLevels(Object.keys(cleared)) });
       }
-      // how many races have been run, and the ten highest scores
+      // how many races have been run, and the ten best: furthest level first, then most points
       if (url.pathname === '/api/history') return json(res, db.history(10));
       if (url.pathname === '/api/ping' && req.method === 'POST') {
         const id = url.searchParams.get('id') || '';
