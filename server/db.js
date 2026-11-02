@@ -66,17 +66,14 @@ export function openDb(dataDir) {
   const rankOf = db.prepare(`SELECT COUNT(*) AS better FROM games WHERE level = ? AND crew_size = ? AND points > ?`);
   const count = db.prepare(`SELECT COUNT(*) AS n FROM games WHERE level = ? AND crew_size = ?`);
 
-  // progress and history: a player's name appears in the players JSON of every race they finished
+  // progress: a player's name appears in the players JSON of every race they finished
   const cleared = db.prepare(`
     SELECT g.level, MIN(g.time_ms) AS best_ms, MAX(g.points) AS best_points, COUNT(*) AS races
     FROM games g, json_each(g.players) p WHERE lower(p.value) = lower(?) GROUP BY g.level`);
   const totals = db.prepare(`SELECT COUNT(*) AS n FROM games`);
-  const byLevel = db.prepare(`SELECT level, COUNT(*) AS n FROM games GROUP BY level`);
-  const byCrew = db.prepare(`SELECT crew_size, COUNT(*) AS n FROM games GROUP BY crew_size`);
-  const mineCount = db.prepare(`SELECT COUNT(*) AS n FROM games g, json_each(g.players) p WHERE lower(p.value) = lower(?)`);
-  const mineRecent = db.prepare(`
-    SELECT g.id, g.level, g.room, g.players, g.crew_size, g.time_ms, g.points, g.deaths, g.finished_at
-    FROM games g, json_each(g.players) p WHERE lower(p.value) = lower(?) ORDER BY g.finished_at DESC LIMIT ?`);
+  const topRaces = db.prepare(`
+    SELECT id, level, room, players, crew_size, time_ms, points, deaths, finished_at
+    FROM games ORDER BY points DESC, finished_at ASC LIMIT ?`);
 
   const row = (r) => ({ ...r, players: JSON.parse(r.players) });
 
@@ -99,15 +96,10 @@ export function openDb(dataDir) {
       if (name) for (const r of cleared.all(name)) out[r.level] = { best_ms: r.best_ms, best_points: r.best_points, races: r.races };
       return out;
     },
-    history(name, limit = 50) {
-      const count = (rows, key) => Object.fromEntries(rows.map((r) => [r[key], r.n]));
-      return {
-        total: totals.get().n,
-        byLevel: count(byLevel.all(), 'level'),
-        byCrew: count(byCrew.all(), 'crew_size'),
-        mine: name ? mineCount.get(name).n : null,
-        games: (name ? mineRecent.all(name, limit) : recent.all(limit)).map(row),
-      };
+    // how many races have been run, and the highest scoring ones across every level and crew
+    history(limit = 10) {
+      const games = topRaces.all(limit).map(row);
+      return { total: totals.get().n, topPoints: games[0]?.points ?? 0, games };
     },
     recordVisit(ip, userAgent, day = today()) {
       addView.run(day);

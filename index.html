@@ -79,7 +79,7 @@
 
         <nav class="home-links">
           <button id="open-board" class="link">Leaderboard</button>
-          <button id="open-history" class="link">Race history</button>
+          <button id="open-history" class="link">Top races</button>
           <a href="/about.html">How to play</a>
         </nav>
       </div>
@@ -147,18 +147,14 @@
 
     <p id="landing-error" class="menu-error" role="alert"></p>
 
-    <!-- race history: how many races, and the recent ones -->
+    <!-- top races: how many have been run, and the ten highest scores -->
     <section id="history-page" class="screen page">
       <div class="card page-card">
         <div class="page-head">
           <button class="back" data-back>← Back</button>
-          <h2>Race history</h2>
+          <h2>Top races</h2>
         </div>
         <div id="history-stats" class="stat-grid"></div>
-        <div class="tabs" id="history-tabs">
-          <button data-scope="mine" class="on">My races</button>
-          <button data-scope="all">Everyone</button>
-        </div>
         <table id="history-table" class="board-table"></table>
       </div>
     </section>

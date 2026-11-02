@@ -82,11 +82,8 @@ export async function startServer({
         const cleared = db.progress(name);
         return json(res, { name, cleared, unlocked: unlockedLevels(Object.keys(cleared)) });
       }
-      // how many races have been run (overall, per level, per crew size, and yours) + recent ones
-      if (url.pathname === '/api/history') {
-        const name = cleanName(url.searchParams.get('name'));
-        return json(res, { name, ...db.history(name, 50) });
-      }
+      // how many races have been run, and the ten highest scores
+      if (url.pathname === '/api/history') return json(res, db.history(10));
       if (url.pathname === '/api/ping' && req.method === 'POST') {
         const id = url.searchParams.get('id') || '';
         if (/^[a-z0-9]{6,24}$/.test(id) && (pings.size < 20_000 || pings.has(id))) {

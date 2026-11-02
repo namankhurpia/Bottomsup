@@ -1,5 +1,5 @@
 // Takes the README screenshots: starts a throwaway server (its own port and data folder),
-// drives headless Chrome over the DevTools protocol as 4 players, and saves PNGs to
+// drives headless Chrome over the DevTools protocol, and saves its 4 pictures to
 // docs/screenshots/. Usage: npm run build && npm run screenshots
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { startServer } from '../server/index.js';
+import { LEVELS } from '../src/sim/levels.js';
 
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const OUT = new URL('../docs/screenshots/', import.meta.url).pathname;
@@ -72,6 +73,12 @@ async function openTab({ width = 1280, height = 800, mobile = false } = {}) {
   await send('Emulation.setFocusEmulationEnabled', { enabled: true }, sessionId);
   const tab = {
     sessionId,
+    close: () => send('Target.closeTarget', { targetId }),
+    // software rendering is slow, so go by the game's own state, not the clock
+    waitForGo: async () => {
+      for (let i = 0; i < 120 && (await tab.eval(`return __toot.state && __toot.state.phase;`)) !== 'playing'; i++) await sleep(1000);
+      await sleep(2500);
+    },
     eval: async (expr) => (await send('Runtime.evaluate', { expression: `(async () => { ${expr} })()`, awaitPromise: true, returnByValue: true }, sessionId)).result.value,
     go: async (url) => {
       await send('Page.navigate', { url }, sessionId);
@@ -88,70 +95,30 @@ async function openTab({ width = 1280, height = 800, mobile = false } = {}) {
 }
 
 try {
-  // 1. start page with leaderboard
+  // 1. top races, with the seeded history
   const host = await openTab();
   await host.go(base);
-  await host.eval(`document.getElementById('name').value = 'Naman';`);
-  await sleep(800);
-  await host.shot('start.png');
-
-  // 2. levels page and race history
-  await host.eval(`document.getElementById('play-single').click();`);
-  await sleep(1200);
-  await host.shot('levels.png');
-  await host.eval(`document.querySelector('#levels-page [data-back]').click(); document.getElementById('open-history').click();`);
-  await sleep(1200);
+  await host.eval(`document.getElementById('open-history').click();`);
+  await sleep(1500);
   await host.shot('history.png');
-  await host.eval(`document.querySelector('#history-page [data-back]').click();`);
+  await host.close();
 
-  // 3. a room with 4 players paddling in the practice pond
-  await host.eval(`document.getElementById('create').click();`);
-  await sleep(1500);
-  const code = await host.eval(`return __toot.online.room.code;`);
-  const friends = [];
-  for (const name of ['Priya', 'Arjun', 'Sam']) {
+  // 2. the two levels the README shows, in solo practice
+  const hole = LEVELS.wells.wells[1];
+  const ring = LEVELS.inferno.movers[0];
+  for (const [id, file, x, y] of [
+    ['wells', 'level5.png', hole.x - hole.r - 2, hole.y], ['inferno', 'level6.png', ring.x, ring.y],
+  ]) {
     const t = await openTab();
-    await t.go(base);
-    await t.eval(`document.getElementById('name').value = '${name}'; document.getElementById('code').value = '${code}'; document.getElementById('join').click();`);
-    friends.push(t);
-    await sleep(900);
-  }
-  await sleep(1500);
-  await host.shot('lobby.png');
-
-  // 4. the F1 start lights, then the race with some farting
-  await host.eval(`document.getElementById('start').click();`);
-  await sleep(2400);
-  await host.shot('start-lights.png');
-  await sleep(1600);
-  for (const t of [host, ...friends]) await t.key('Space');
-  await sleep(900);
-  await host.shot('race.png');
-  for (const t of [host, ...friends]) await t.key('Space', false);
-
-  // 5. the drop levels, in solo practice (unlocked for Naman by the seeded games)
-  for (const [i, file, x, y] of [[1, 'level2.png', 0, 30], [2, 'level3.png', 76, 40]]) {
-    const t = await openTab();
-    await t.go(base);
-    await t.eval(`document.getElementById('name').value = 'Naman'; document.getElementById('play-single').click();`);
-    await sleep(1200);
-    await t.go(base + '/?practice');
-    await sleep(4300);
-    await t.eval(`document.getElementById('help').classList.add('hidden'); __toot.sim.debugPlace(${x}, ${y}, 0);`);
-    await sleep(1500);
+    await t.go(`${base}/?practice=${id}`);
+    await t.waitForGo();
+    await t.eval(`document.getElementById('help').classList.add('hidden'); setInterval(() => __toot.sim.debugPlace(${x}, ${y}, 0), 30);`);
+    await sleep(3000);
     await t.shot(file);
+    await t.close();
   }
 
-  // 6. a close-up of the raft and crew
-  const close = await openTab();
-  await close.go(base + '/?cam=close&practice');
-  await sleep(4500);
-  for (const k of ['KeyC', 'KeyV']) await close.key(k);
-  await sleep(500);
-  await close.shot('raft.png');
-  for (const k of ['KeyC', 'KeyV']) await close.key(k, false);
-
-  // 7. on a phone: the lobby with the joystick and fart button
+  // 3. on a phone: the lobby with the joystick and fart button
   const phone = await openTab({ width: 390, height: 844, mobile: true });
   await phone.go(base);
   await phone.eval(`document.getElementById('name').value = 'Zoe'; document.getElementById('create').click();`);

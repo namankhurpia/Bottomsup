@@ -576,7 +576,7 @@ about.addEventListener('click', (e) => e.target === about && closeAbout());
 addEventListener('keydown', (e) => e.key === 'Escape' && !about.hidden && closeAbout());
 for (const b of document.querySelectorAll('[data-back]')) b.onclick = () => showPage(null);
 
-// --- menu pages: levels and race history --------------------------------------------------
+// --- menu pages: levels and top races -----------------------------------------------------
 function showPage(page) {
   setBodyClass('page-', page);
   $('landing-error').textContent = '';
@@ -627,37 +627,19 @@ async function renderSinglePage() {
   draw();
 }
 
-let historyScope = 'mine';
-for (const tab of document.querySelectorAll('#history-tabs button')) {
-  tab.onclick = () => {
-    historyScope = tab.dataset.scope;
-    for (const t of document.querySelectorAll('#history-tabs button')) t.classList.toggle('on', t === tab);
-    renderHistoryPage();
-  };
-}
-
 async function renderHistoryPage() {
-  const name = typedName();
-  const scope = name ? historyScope : 'all';
   const stats = $('history-stats');
   const table = $('history-table');
   let h;
   try {
-    h = await (await fetch(`/api/history${scope === 'mine' ? `?name=${encodeURIComponent(name)}` : ''}`)).json();
+    h = await (await fetch('/api/history')).json();
   } catch {
-    stats.textContent = 'History is offline right now.';
+    stats.textContent = 'Top races are offline right now.';
     table.textContent = '';
     return;
   }
-  const tiles = [['Races, everyone', h.total]];
-  if (name) {
-    const mine = scope === 'mine' ? h.mine : null;
-    if (mine !== null) tiles.push([`${name}'s races`, mine]);
-  }
-  for (const id of RACE_LEVELS) tiles.push([`Level ${LEVELS[id].number}`, h.byLevel[id] || 0]);
-  for (const n of [1, 2, 3, 4]) if (h.byCrew[n]) tiles.push([n === 1 ? 'Solo crews' : `${n}-player crews`, h.byCrew[n]]);
   stats.textContent = '';
-  for (const [k, v] of tiles) {
+  for (const [k, v] of [['Total races', h.total], ['Most points', h.topPoints]]) {
     const d = document.createElement('div');
     d.className = 'stat';
     const vv = document.createElement('div');
@@ -669,36 +651,29 @@ async function renderHistoryPage() {
     d.append(vv, kk);
     stats.append(d);
   }
-  $('history-tabs').style.display = name ? '' : 'none';
   table.textContent = '';
   const head = table.insertRow();
-  for (const t of ['When', 'Level', 'Crew', 'Time', 'Points']) {
+  for (const [t, cls] of [['#', ''], ['Crew', ''], ['Time', 'num'], ['Points', 'num']]) {
     const th = document.createElement('th');
     th.textContent = t;
+    th.className = cls;
     head.append(th);
   }
   if (!h.games.length) {
     const td = table.insertRow().insertCell();
-    td.colSpan = 5;
-    td.textContent = scope === 'mine' ? `No races for ${name} yet.` : 'No races yet.';
+    td.colSpan = 4;
+    td.textContent = 'No races yet.';
     td.parentElement.className = 'empty-row';
     return;
   }
-  for (const g of h.games) {
+  h.games.forEach((g, i) => {
     const tr = table.insertRow();
-    const cells = [
-      [new Date(g.finished_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }), 'when'],
-      [LEVELS[g.level] ? `${LEVELS[g.level].number}. ${LEVELS[g.level].name}` : g.level, ''],
-      [g.players.join(', '), 'crew'],
-      [fmtMs(g.time_ms), 'num'],
-      [String(g.points), 'num'],
-    ];
-    for (const [text, cls] of cells) {
+    for (const [text, cls] of [[String(i + 1), ''], [g.players.join(', '), 'crew'], [fmtMs(g.time_ms), 'num'], [String(g.points), 'num']]) {
       const td = tr.insertCell();
       td.textContent = text;
       td.className = cls;
     }
-  }
+  });
 }
 $('to-pond').onclick = () => {
   if (!online.room.private) return net.send({ t: 'lobby' });
@@ -739,7 +714,8 @@ document.addEventListener('visibilitychange', pingAnalytics);
 
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min(0.1, (now - last) / 1000);
+  // the first frame's timestamp can be older than `last` if starting up took a while
+  const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
   last = now;
   frameFn(dt, now);
   requestAnimationFrame(frame);

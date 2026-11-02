@@ -5,11 +5,11 @@
 **Up to four friends. One round raft. Only farts for power.**
 
 A silly co-op physics racer you play together in the browser. Sit on the rim of an inflatable raft,
-aim your bottom at the water, and toot your crew through canals, spikes and raging rapids.
+aim your bottom at the water, and toot your crew through canals, spikes, windmills and a giant spiral river.
 
-### [▶ Play now: http://192.9.238.244](http://192.9.238.244)
+### [▶ Play now: bottomsup.tech](https://bottomsup.tech)
 
-No download, no account. Type a name, share a 4-digit room code, go.
+No download, no account. Type a name and play alone, or share a 4-digit room code with friends.
 
 ![Node 24](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-0.186-000000?logo=three.js&logoColor=white)
@@ -18,7 +18,7 @@ No download, no account. Type a name, share a 4-digit room code, go.
 ![Players](https://img.shields.io/badge/players-1--4-22c55e)
 ![Mobile](https://img.shields.io/badge/phones-supported-0ea5e9)
 
-<img src="docs/screenshots/race.jpg" alt="Four players racing the raft down the Bendy Canal" width="900">
+<img src="docs/screenshots/level6.jpg" alt="The raft inside a spinning spike circle on the spiral river of The Inferno" width="900">
 
 </div>
 
@@ -29,8 +29,6 @@ straight through its middle. Want to go forward? The people at the back toot. Wa
 round the rim and push from the side, or turn away from the centre to spin it. Push against each
 other and nothing happens. **The secret isn't farting harder, it's farting together.**
 
-<p align="center"><img src="docs/screenshots/raft.jpg" alt="Close-up of the raft: four players on the orange tube, wooden floor, thwarts between their quarters" width="560"></p>
-
 - 🎈 **The rim is split between whoever's playing**: alone you get all 360°, two players get half each, three get 120°, four get a quarter. The raft's thwarts mark where your bit ends.
 - ⛽ **Gas runs out.** Hold too long and your card flashes red. Every fart starts with a punchy *toot*.
 - 🔊 **Every player has their own fart voice**: Classic, Squeaker, Rumbler and Wet One, all synthesised in code.
@@ -38,16 +36,8 @@ other and nothing happens. **The secret isn't farting harder, it's farting toget
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/lobby.jpg" alt="The lobby: four players paddling round the practice pond"><br><b>The lobby.</b> Share the room code and paddle round the practice pond while your crew joins.</td>
-    <td width="50%"><img src="docs/screenshots/start-lights.jpg" alt="F1-style start lights counting down"><br><b>Lights out.</b> Red, red, orange, green. Everyone's lights change together.</td>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/level2.jpg" alt="Level 2, The Plank Road: a thin water channel high above a valley"><br><b>Level 2 · The Plank Road.</b> No walls, just thin water channels high above a valley. Drift off and you fall.</td>
-    <td><img src="docs/screenshots/level3.jpg" alt="Level 3, Rapids Run: a long thin road over the drop"><br><b>Level 3 · Rapids Run.</b> The long one: raging corners that take two to fight, then a long road over the drop.</td>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/levels.jpg" alt="The journey map of levels, with progress and unlocks"><br><b>The journey.</b> A map of every level; finish one with any crew to unlock the next. Your raft shows where you are.</td>
-    <td><img src="docs/screenshots/history.jpg" alt="The race history page"><br><b>Race history.</b> Every race ever, with times, crews and dates.</td>
+    <td width="50%"><img src="docs/screenshots/level5.jpg" alt="Level 5, The Holey Road: dark holes in the track with arrows pointing into them"><br><b>The Holey Road.</b> Holes that drag you in if you get close. Even the rubber ducks can't escape.</td>
+    <td width="50%"><img src="docs/screenshots/history.jpg" alt="The top races page: total races and the ten highest scores"><br><b>Top races.</b> The total races run, and the ten highest scores.</td>
   </tr>
 </table>
 
@@ -60,9 +50,12 @@ other and nothing happens. **The secret isn't farting harder, it's farting toget
 | 1 | **The Bendy Canal** | Walled canal, a tight gap, a sharp turn onto spikes, a sideways current | 1:15 |
 | 2 | **The Plank Road** | No walls. Thin roads over a drop, a crosswind and a sweeping gate | 1:10 |
 | 3 | **Rapids Run** | Spiked barrier, three raging corners, a long unprotected road | 3:00 |
+| 4 | **Windmill Ridge** | Spiked windmills sweeping across a track with no walls | 2:30 |
+| 5 | **The Holey Road** | Holes that pull you in, narrowing lanes, then a crosswind | 2:00 |
+| 6 | **The Inferno** | A 476 m spiral river, spinning spike circles, holes and windmills | 5:00 |
 
-Finishing a level (with any number of players) unlocks the next one for everyone in that crew.
-In a room, the host picks the next level on the journey map and everyone sees the raft move there.
+Every level is open from the start. In a room, the host picks the level on the journey map and
+everyone sees the raft move there.
 
 ## Scoring
 
@@ -82,8 +75,8 @@ they aren't comparable.
 | **Stuck? Back to the checkpoint** | `R` | | |
 | **Mute / help** | `M` / `H` | | |
 
-Solo practice lets one person drive all four: `1`–`4` pick a player, `Z` `X` `C` `V` fart for each,
-and holding `Shift` moves everyone at once.
+In Single player you have the whole rim to yourself: `←` walks clockwise, `→` walks
+counter-clockwise, and you can keep going round in circles.
 
 ## How it works
 
@@ -122,9 +115,9 @@ Hosting it for friends on a cloud VM (EC2, Oracle Cloud, any Linux box) is one s
 
 ```bash
 npm run test:sim      # physics checks + an autopilot that beats level 1
-npm run test:net      # real server + 4 WebSocket clients: rooms, unlocks, a full race, scores
+npm run test:net      # real server + 4 WebSocket clients: rooms, a full race, scores
 npm run test:levels   # every level must be beatable by every crew size (a few minutes)
-npm run screenshots   # retake the README screenshots (headless Chrome)
+npm run screenshots   # retake the README pictures (headless Chrome)
 npm run sounds        # render the fart voices to sound-preview/*.wav
 ```
 
@@ -132,13 +125,14 @@ npm run sounds        # render the fart voices to sound-preview/*.wav
 
 | Path | What's there |
 |---|---|
-| `src/sim/` | The physics game itself (Rapier 2D, no DOM): `sim.js`, the levels, unlock rule, scoring |
+| `src/sim/` | The physics game itself (Rapier 2D, no DOM): `sim.js`, the levels, scoring |
 | `server/` | HTTP + WebSocket server, rooms (lobby → countdown → race → results), SQLite scores |
 | `src/` | The browser client: renderer, HUD, input (keyboard, mouse, gamepad, touch), audio |
 | `scripts/` | Tests, the level-checking autopilot, the screenshot taker |
 | `deploy/` | One-command server setup, systemd service, update script |
 
-**Adding a level:** write a level file in `src/sim/` (walls, optional `water` for a drop, currents,
+**Adding a level:** write a level file in `src/sim/` (walls, optional `water` for a drop, which can
+be rectangles, round pools or curving channels, currents,
 moving obstacles, checkpoints, finish, par and a `route` for the test autopilot), add it to
 `LEVELS` and `RACE_LEVELS` in `levels.js`, then run `npm run test:levels` to prove every crew size
 can finish it.

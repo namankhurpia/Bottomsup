@@ -185,9 +185,11 @@ try {
   check(lb.top.length === 1 && lb.top[0].points === r.points && !!Date.parse(lb.top[0].finished_at), 'leaderboard API returns the game with its date/time');
   const lb1 = await (await fetch(`http://127.0.0.1:${server.port}/api/leaderboard?level=canal&crew=1`)).json();
   check(!lb1.top.some((g) => g.id === r.id), '4-player games stay off the solo leaderboard');
-  const hist = await (await fetch(`http://127.0.0.1:${server.port}/api/history?name=Bob`)).json();
-  check(hist.total === 2 && hist.byLevel.canal === 2 && hist.byCrew['4'] === 1 && hist.mine === 1 && hist.games[0].id === r.id,
-    'history API counts all races, per level, per crew size, and yours');
+  const hist = await (await fetch(`http://127.0.0.1:${server.port}/api/history`)).json();
+  check(hist.total === 2 && hist.games.length === 2 && hist.topPoints === hist.games[0].points && hist.games[0].points >= hist.games[1].points && !('byLevel' in hist) && !('mine' in hist),
+    'top races API gives the total and the races, highest score first, with no per-player or per-level counts');
+  for (let i = 0; i < 12; i++) server.db.saveGame({ level: 'canal', room: '0000', players: ['Filler'], crewSize: 1, timeMs: 60000, points: 5 + i, deaths: 0, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() });
+  check((await (await fetch(`http://127.0.0.1:${server.port}/api/history`)).json()).games.length === 10, 'top races stops at 10');
 
   a.inbox.length = 0;
   a.send({ t: 'lobby' });

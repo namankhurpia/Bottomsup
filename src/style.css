@@ -165,6 +165,7 @@ input {
 .board-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
 .board-table th { text-align: left; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 6px; }
 .board-table td { padding: 6px; border-top: 1px solid rgba(18, 48, 74, 0.07); vertical-align: top; }
+.board-table th.num { text-align: right; }
 .board-table td.num { text-align: right; font-weight: 800; }
 .board-table tr.mine td { background: rgba(255, 138, 61, 0.16); }
 .board-table .crew { font-weight: 700; }
