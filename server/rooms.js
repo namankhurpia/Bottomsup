@@ -218,11 +218,11 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
     finish(timeTicks) {
       const level = LEVELS[this.levelId];
       const timeMs = Math.round((timeTicks * 1000) / TICK_RATE);
-      const points = pointsFor(level, timeMs);
       const snap = this.sim.snapshot();
       const players = snap.crew.map((i) => (this.seats[i] ? this.seats[i].name : '?'));
       const deaths = snap.deaths;
       const crewSize = players.length;
+      const points = pointsFor(level, timeMs, crewSize);
       const saved = db.saveGame({
         level: level.id, room: this.code, players, crewSize, timeMs, points, deaths,
         startedAt: this.startedAt || new Date().toISOString(), finishedAt: new Date().toISOString(),

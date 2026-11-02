@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import WebSocket from 'ws';
 import { startServer } from '../server/index.js';
 import { LEVELS } from '../src/sim/levels.js';
+import { pointsFor } from '../src/sim/scoring.js';
 
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const OUT = new URL('../docs/screenshots/', import.meta.url).pathname;
@@ -31,8 +32,7 @@ const seed = [
   ['wells', ['Mia', 'Raj', 'Tom'], 118000, 'Oct 28'],
 ];
 seed.forEach(([level, players, timeMs], i) => {
-  const par = LEVELS[level].par;
-  server.db.saveGame({ level, room: '1234', players, crewSize: players.length, timeMs, points: Math.round((1000 * par * 1000) / timeMs), deaths: i % 3, startedAt: day(20 + i, 18), finishedAt: day(20 + i, 19) });
+  server.db.saveGame({ level, room: '1234', players, crewSize: players.length, timeMs, points: pointsFor(LEVELS[level], timeMs, players.length), deaths: i % 3, startedAt: day(20 + i, 18), finishedAt: day(20 + i, 19) });
 });
 
 // --- headless Chrome + a tiny DevTools-protocol client

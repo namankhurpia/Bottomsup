@@ -41,6 +41,15 @@ export function openDb(dataDir) {
     CREATE TABLE IF NOT EXISTS visitors (day TEXT NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (day, hash)) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS visitors_hash ON visitors (hash);
   `);
+  // Points now multiply by crew size. Races saved before that get the same treatment, once.
+  if (!db.prepare(`SELECT 1 FROM meta WHERE key = 'points_by_crew'`).get()) {
+    db.exec(`
+      BEGIN;
+      UPDATE games SET points = points * crew_size;
+      INSERT INTO meta (key, value) VALUES ('points_by_crew', '1');
+      COMMIT;
+    `);
+  }
   db.prepare(`INSERT OR IGNORE INTO meta (key, value) VALUES ('visitor_salt', ?)`).run(randomBytes(16).toString('hex'));
   const salt = db.prepare(`SELECT value FROM meta WHERE key = 'visitor_salt'`).get().value;
   const addView = db.prepare(`INSERT INTO daily (day, views) VALUES (?, 1) ON CONFLICT (day) DO UPDATE SET views = views + 1`);

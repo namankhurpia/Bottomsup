@@ -7,7 +7,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { startServer } from '../server/index.js';
-import { RACE_LEVELS } from '../src/sim/levels.js';
+import { LEVELS, RACE_LEVELS } from '../src/sim/levels.js';
+import { pointsFor } from '../src/sim/scoring.js';
+import { DatabaseSync } from 'node:sqlite';
+import { openDb } from '../server/db.js';
 import { createPilot } from './pilot.js';
 
 const dataDir = mkdtempSync(join(tmpdir(), 'toot-test-'));
@@ -179,6 +182,7 @@ try {
   const res = await a.waitFor((m) => m.t === 'room' && m.room.phase === 'results', 60000, 'results');
   const r = res.room.result;
   console.log(`     race finished: ${(r.timeMs / 1000).toFixed(1)} s, ${r.points} points, rank ${r.rank}/${r.of}, ${r.deaths} splats`);
+  check(r.points === pointsFor(LEVELS.canal, r.timeMs, 4) && r.points === pointsFor(LEVELS.canal, r.timeMs) * 4, 'a crew of 4 scores 4 times the points for the same time');
   check(r.points > 0 && r.rank === 1 && r.crewSize === 4 && r.players.join() === 'bAnn/b,Bob,Cat,Dan', 'result saved with points, rank, crew size and all 4 names');
 
   const lb = await (await fetch(`http://127.0.0.1:${server.port}/api/leaderboard?level=canal&crew=4`)).json();
@@ -195,6 +199,22 @@ try {
   const ranked = (await (await fetch(`http://127.0.0.1:${server.port}/api/history`)).json()).games;
   check(ranked.length === 10, 'top races stops at 10');
   check(ranked[0].level === 'inferno' && ranked[0].points === 1 && ranked[1].level === 'wells', 'the furthest level ranks first, however few points it scored');
+
+  // races saved under the old scoring get multiplied once, however many times the server restarts
+  {
+    const dir = mkdtempSync(join(tmpdir(), 'toot-old-'));
+    const old = openDb(dir);
+    old.saveGame({ level: 'canal', room: '1', players: ['A', 'B', 'C'], crewSize: 3, timeMs: 75000, points: 1000, deaths: 0, startedAt: 'x', finishedAt: 'x' });
+    old.close();
+    const raw = new DatabaseSync(join(dir, 'scores.db'));
+    raw.exec(`DELETE FROM meta WHERE key = 'points_by_crew'`);
+    raw.close();
+    openDb(dir).close();
+    const again = openDb(dir);
+    check(again.history().games[0].points === 3000, 'old races are multiplied by their crew size, exactly once');
+    again.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 
   a.inbox.length = 0;
   a.send({ t: 'lobby' });
