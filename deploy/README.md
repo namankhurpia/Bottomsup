@@ -61,10 +61,14 @@ starts on boot. At the end it prints the URL. Send that to your friends.
 To use another port, run setup as `sudo PORT=8080 bash deploy/setup-ec2.sh` and open that
 port in the security group instead.
 
-## HTTPS (optional, later)
+## HTTPS and the domain
 
-Plain `http://` works fine for the game (sound and WebSockets don't need HTTPS). If you
-get a domain name, put [Caddy](https://caddyserver.com) in front for automatic HTTPS:
-run the game on port 8080 and give Caddy a two-line Caddyfile
-(`yourdomain.com` / `reverse_proxy localhost:8080`). The client already switches to
+The game lives at **https://bottomsup.tech**. DNS (at IONOS) has `A @` and `A www` pointing at
+the server. One script puts [Caddy](https://caddyserver.com) in front for automatic certificates,
+moves the game to port 8080, and redirects `www` and the old IP address to the domain:
+
+    sudo bash deploy/setup-https.sh
+
+On Oracle Cloud, also allow TCP 443 in the subnet's Security List (Add Ingress Rule, source
+`0.0.0.0/0`). After that, `deploy/update.sh` works as before. The client already switches to
 `wss://` when the page is served over HTTPS.

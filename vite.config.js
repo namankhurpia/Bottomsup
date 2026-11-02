@@ -3,8 +3,8 @@ import { extname, join } from 'node:path';
 import { defineConfig } from 'vite';
 
 // The site's public address, used in search and sharing tags, the sitemap and llms.txt.
-// When you get a domain, change this one line (or build with SITE_URL=https://... ) and rebuild.
-const SITE_URL = (process.env.SITE_URL || 'http://192.9.238.244').replace(/\/$/, '');
+// To move to another address, change this one line (or build with SITE_URL=https://... ) and rebuild.
+const SITE_URL = (process.env.SITE_URL || 'https://bottomsup.tech').replace(/\/$/, '');
 
 // Fills in __SITE_URL__ in index.html and in the plain files copied from public/.
 const siteUrl = () => ({
