@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Bottoms Up! Private Stats</title>
+    <style>
+      :root { --ink: #12304a; --muted: #55697c; --line: #d6e3ec; --card: #fff; --bg: #eef7fc; --accent: #d9560f; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      main { max-width: 1100px; margin: 0 auto; padding: 28px 16px 48px; }
+      header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+      h1 { margin: 0; font-size: 30px; font-weight: 900; }
+      h2 { margin: 28px 0 10px; font-size: 14px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--muted); }
+      a { color: var(--accent); font-weight: 700; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+      .lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+      .tile { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+      .tile .v { font-size: 34px; font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; }
+      .tile .k { font-size: 13px; color: var(--muted); font-weight: 600; }
+      .wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+      th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+      th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+      td.num, th.num { text-align: right; }
+      tr:last-child td { border-bottom: none; }
+      .note { margin-top: 14px; font-size: 13px; color: var(--muted); }
+      .err { color: #b91c1c; font-weight: 700; }
+      form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+      input { flex: 1 1 240px; min-height: 44px; padding: 8px 12px; font: inherit; border: 1px solid var(--line); border-radius: 10px; }
+      button { min-height: 44px; padding: 8px 18px; font: inherit; font-weight: 800; color: #1f1208; background: #ff8a3d; border: 0; border-radius: 10px; cursor: pointer; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>💨 Private stats</h1>
+        <a href="/">← Back to the game</a>
+      </header>
+
+      <form id="login" hidden>
+        <input id="key" type="password" autocomplete="off" placeholder="Stats key" aria-label="Stats key" />
+        <button>Open</button>
+      </form>
+      <p class="note err" id="error" hidden></p>
+
+      <div id="content" hidden>
+        <h2>Visitors</h2>
+        <div class="grid" id="tiles"></div>
+        <h2>Who's been here</h2>
+        <div class="wrap"><table id="visits"></table></div>
+        <p class="note">One row per person per day, newest first. Places come from the IP address and can be wrong, especially on mobile or a VPN. A person on two devices shows as two rows. Rows are deleted after 90 days.</p>
+        <h2>Last 30 days</h2>
+        <div class="lists" id="top"></div>
+        <h2>Levels, all time</h2>
+        <div class="wrap"><table id="levels"></table></div>
+        <h2>Where rafts go down, all time</h2>
+        <div class="wrap"><table id="falls"></table></div>
+        <p class="note">"Quit" means a race was left before the finish. Hardest spots are listed first. Solo <code>?practice</code> mode isn't counted.</p>
+        <p class="note" id="updated"></p>
+        <p class="note"><a href="https://db-ip.com">IP Geolocation by DB-IP</a></p>
+      </div>
+    </main>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const KEY = 'bottomsup.statsKey';
+      const CAUSE = { edge: 'Off the edge', hole: 'Down a hole', spike: 'Hit spikes' };
+
+      function saved() {
+        try {
+          return sessionStorage.getItem(KEY) || '';
+        } catch {
+          return '';
+        }
+      }
+      function remember(k) {
+        try {
+          sessionStorage.setItem(KEY, k);
+        } catch {}
+      }
+      // the private link carries the key after the #, which browsers never send anywhere
+      let key = saved();
+      const fromLink = new URLSearchParams(location.hash.slice(1)).get('key');
+      if (fromLink) {
+        key = fromLink;
+        remember(key);
+        history.replaceState(null, '', location.pathname);
+      }
+
+      const fmt = (n) => Number(n).toLocaleString();
+      const duration = (s) => (s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`);
+      const when = (iso) => new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+
+      // everything here came from visitors (names, sites), so it only ever goes in as text
+      function table(el, heads, rows, empty) {
+        el.textContent = '';
+        const head = el.insertRow();
+        for (const h of heads) {
+          const th = document.createElement('th');
+          th.textContent = h.label;
+          if (h.num) th.className = 'num';
+          head.append(th);
+        }
+        if (!rows.length) {
+          const td = el.insertRow().insertCell();
+          td.colSpan = heads.length;
+          td.textContent = empty;
+        }
+        for (const r of rows) {
+          const row = el.insertRow();
+          r.forEach((v, i) => {
+            const td = row.insertCell();
+            td.textContent = v;
+            if (heads[i].num) td.className = 'num';
+          });
+        }
+      }
+      const col = (label, num = false) => ({ label, num });
+
+      function render(d) {
+        $('tiles').textContent = '';
+        for (const [v, k] of [
+          [fmt(d.visitors.today), 'visitors today (UTC)'],
+          [fmt(d.visitors.week), 'last 7 days'],
+          [fmt(d.visitors.month), 'last 30 days'],
+          [duration(d.secondsThisMonth), 'time on site, 30 days'],
+        ]) {
+          const t = document.createElement('div');
+          t.className = 'tile';
+          const a = document.createElement('div');
+          a.className = 'v';
+          a.textContent = v;
+          const b = document.createElement('div');
+          b.className = 'k';
+          b.textContent = k;
+          t.append(a, b);
+          $('tiles').append(t);
+        }
+
+        table($('visits'),
+          [col('Last seen'), col('Names'), col('Place'), col('Device'), col('Came from'), col('Time', true), col('Rooms', true), col('Races', true), col('Finished', true), col('Falls', true)],
+          d.visits.map((v) => [
+            when(v.last_at),
+            v.names.join(', ') || '–',
+            [v.city, v.region, v.country].filter(Boolean).join(', ') || 'Unknown',
+            `${v.device} · ${v.browser} · ${v.os}`,
+            v.referrer || 'Direct',
+            duration(v.seconds),
+            fmt(v.rooms),
+            fmt(v.races_started),
+            fmt(v.races_finished),
+            fmt(v.falls),
+          ]),
+          'No visitors yet.');
+
+        $('top').textContent = '';
+        for (const [title, items] of [
+          ['Countries', d.top.countries], ['Cities', d.top.cities], ['Devices', d.top.devices],
+          ['Browsers', d.top.browsers], ['Came from', d.top.referrers],
+        ]) {
+          const w = document.createElement('div');
+          w.className = 'wrap';
+          const t = document.createElement('table');
+          table(t, [col(title), col('People', true)], items.map((i) => [i.label, fmt(i.n)]), 'Nothing yet.');
+          w.append(t);
+          $('top').append(w);
+        }
+
+        table($('levels'),
+          [col('Level'), col('Started', true), col('Finished', true), col('Quit', true), col('Finish rate', true), col('Falls per race', true)],
+          d.levels.map((l) => [
+            `${l.number}. ${l.name}`, fmt(l.started), fmt(l.finished), fmt(l.quit),
+            l.started ? `${Math.round((100 * l.finished) / l.started)}%` : '–',
+            l.started ? (l.falls / l.started).toFixed(1) : '–',
+          ]),
+          'No races yet.');
+
+        table($('falls'),
+          [col('Level'), col('Stretch'), col('How'), col('Times', true)],
+          d.falls.map((f) => [`${f.number}. ${f.name}`, f.section ? `After checkpoint ${f.section}` : 'Before the first checkpoint', CAUSE[f.cause] || f.cause, fmt(f.n)]),
+          'No falls yet.');
+
+        $('updated').textContent = `Updates every 30 seconds. Last updated ${new Date().toLocaleTimeString()}.`;
+      }
+
+      function showLogin(message) {
+        $('login').hidden = false;
+        $('content').hidden = true;
+        $('error').hidden = !message;
+        $('error').textContent = message || '';
+      }
+
+      async function load() {
+        if (!key) return showLogin();
+        try {
+          const res = await fetch('/api/stats', { headers: { authorization: `Bearer ${key}` } });
+          if (res.status === 401) return showLogin('That key is wrong.');
+          if (!res.ok) throw new Error();
+          render(await res.json());
+          $('login').hidden = true;
+          $('error').hidden = true;
+          $('content').hidden = false;
+        } catch {
+          $('error').hidden = false;
+          $('error').textContent = "Couldn't reach the server. Retrying…";
+        }
+      }
+
+      $('login').onsubmit = (e) => {
+        e.preventDefault();
+        key = $('key').value.trim();
+        remember(key);
+        load();
+      };
+      load();
+      setInterval(() => $('login').hidden && load(), 30000);
+    </script>
+  </body>
+</html>

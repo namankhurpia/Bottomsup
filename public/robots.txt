@@ -4,6 +4,7 @@ Allow: /
 Disallow: /api/
 Disallow: /ws
 Disallow: /analytics
+Disallow: /stats
 
 # AI crawlers, named explicitly because some of them only come when invited
 User-agent: GPTBot
@@ -25,5 +26,6 @@ Allow: /
 Disallow: /api/
 Disallow: /ws
 Disallow: /analytics
+Disallow: /stats
 
 Sitemap: __SITE_URL__/sitemap.xml

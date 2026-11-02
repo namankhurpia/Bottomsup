@@ -12,10 +12,13 @@
     "start": "node server/main.js",
     "test:net": "node scripts/net-test.js",
     "test:levels": "node scripts/levels-check.js",
-    "screenshots": "node scripts/screenshots.mjs"
+    "screenshots": "node scripts/screenshots.mjs",
+    "stats-link": "node scripts/stats-link.js"
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "0.21.0",
+    "@ip-location-db/dbip-city-mmdb": "2.3.2026060513",
+    "maxmind": "5.0.8",
     "three": "0.186.1",
     "ws": "^8.22.0"
   },

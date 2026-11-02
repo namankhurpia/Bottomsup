@@ -124,6 +124,43 @@ try {
   const page = await fetch(api + '/analytics');
   check(page.status === 200 && (await page.text()).includes('noindex') , '/analytics page is served and kept out of search results');
 
+  // /stats: private, and who's visiting without ever storing the address
+  const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605 Version/17.0 Mobile Safari/604';
+  const visitor = { 'user-agent': iphone, 'x-forwarded-for': '8.8.8.8', referer: 'https://www.reddit.com/r/games/secret?x=1' };
+  await fetch(api + '/', { headers: visitor });
+  await fetch(api + '/api/ping?id=statstab01', { method: 'POST', headers: visitor });
+  await sleep(1100);
+  await fetch(api + '/api/ping?id=statstab01', { method: 'POST', headers: visitor });
+  const statsWs = new WebSocket(url, { headers: visitor });
+  const named = await new Promise((ok, no) => {
+    statsWs.on('open', () => statsWs.send(JSON.stringify({ t: 'create', name: '<b>Zed</b>', private: true, level: 'rapids' })));
+    statsWs.on('message', (m) => JSON.parse(m).t === 'welcome' && ok(true));
+    statsWs.on('error', no);
+  });
+  check(named, 'stats: a tracked visitor can start a single-player race');
+  check((await fetch(api + '/api/stats')).status === 401, 'stats: no key is refused');
+  check((await fetch(api + '/api/stats', { headers: { authorization: 'Bearer nope' } })).status === 401, 'stats: a wrong key is refused');
+  const privateStats = await (await fetch(api + '/api/stats', { headers: { authorization: `Bearer ${server.db.statsKey}` } })).json();
+  const seen = privateStats.visits.find((v) => v.device === 'Phone');
+  check(seen && seen.city === 'Mountain View' && seen.country === 'US', 'stats: place looked up from the forwarded address');
+  check(seen && seen.os === 'iOS' && seen.browser === 'Safari' && seen.referrer === 'reddit.com', 'stats: device and referring site, without the page');
+  check(seen && seen.seconds >= 1 && seen.names.includes('bZed/b'), 'stats: time on site and typed name');
+  const statsDb = new DatabaseSync(join(dataDir, 'scores.db'));
+  const rawDump = JSON.stringify(statsDb.prepare('SELECT * FROM visits').all());
+  statsDb.close();
+  check(!rawDump.includes('8.8.8.8') && !rawDump.includes('secret'), 'stats: the IP address and referring page are not stored');
+  const statsRoom = [...server.rooms.rooms.values()].find((r) => r.isPrivate && r.seats[0]?.name === 'bZed/b');
+  for (let i = 0; i < 100 && statsRoom.phase !== 'race'; i++) await sleep(20);
+  statsRoom.sim.debugPlace(1000, 1000); // nowhere near the water
+  await sleep(100);
+  const fall = server.db.stats().falls.find((f) => f.level === 'rapids');
+  check(fall && fall.cause === 'edge' && fall.section === 0 && fall.n === 1, 'stats: a fall is counted by level, stretch and cause');
+  const fellVisit = server.db.stats().visits.find((v) => v.device === 'Phone');
+  check(fellVisit.falls === 1 && fellVisit.races_started === 1, "stats: the fall and race show on that visitor's row");
+  statsWs.close();
+  check((await (await fetch(api + '/stats')).text()).includes('noindex'), '/stats page is served and kept out of search results');
+  check((await fetch(api + '/privacy')).status === 200, '/privacy page is served');
+
   // single player: straight into a race on the chosen level, no lobby, and nobody can join
   const g = client('G');
   await g.open;
@@ -224,6 +261,10 @@ try {
   await Promise.all([a, b, c, d2, e].map((x) => x.close()));
   await sleep(1200);
   check(server.rooms.rooms.size === 0, 'room is removed once everyone has left');
+  const finalStats = server.db.stats();
+  const ran = finalStats.levels.reduce((n, l) => ({ started: n.started + l.started, finished: n.finished + l.finished, quit: n.quit + l.quit }), { started: 0, finished: 0, quit: 0 });
+  console.log(`     level counts: ${JSON.stringify(ran)}`);
+  check(ran.started > 0 && ran.finished > 0 && ran.quit > 0, 'stats: races started, finished and quit are counted per level');
 } catch (err) {
   console.log('FAIL', err.message);
   failures++;

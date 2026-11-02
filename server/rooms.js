@@ -62,7 +62,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
       const seat = this.seats.findIndex((s) => !s);
       if (seat === -1) return { error: 'room-full' };
       const token = randomBytes(12).toString('hex');
-      this.seats[seat] = { name, token, ws, connected: true, cmd: IDLE(), lastInput: 0, leftAt: null };
+      this.seats[seat] = { name, token, ws, connected: true, cmd: IDLE(), lastInput: 0, leftAt: null, visitor: ws.visitor };
       this.emptySince = null;
       this.seatsChanged();
       return { seat, token };
@@ -73,7 +73,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
       if (seat === -1) return { error: 'room-not-found' };
       const s = this.seats[seat];
       if (s.ws && s.ws !== ws) s.ws.close(4000, 'replaced');
-      Object.assign(s, { ws, connected: true, cmd: IDLE(), leftAt: null });
+      Object.assign(s, { ws, connected: true, cmd: IDLE(), leftAt: null, visitor: ws.visitor || s.visitor });
       this.emptySince = null;
       this.broadcastRoom();
       return { seat, token };
@@ -166,6 +166,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
     // host: back to the practice pond (also aborts a race)
     toLobby(seat) {
       if (seat !== this.hostSeat) return { error: 'not-host' };
+      this.abandonRace();
       // anyone who left during the race gives up their seat now
       this.seats = this.seats.map((s) => (s && !s.connected ? null : s));
       this.load('pond');
@@ -176,6 +177,15 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
 
     respawn() {
       if (this.phase === 'race') this.sim.respawn();
+    }
+
+    get crewVisitors() {
+      return this.seats.flatMap((s) => (s && s.visitor ? [s.visitor] : []));
+    }
+
+    // a race that was under way ended without a finish
+    abandonRace() {
+      if (this.phase === 'race') db.raceQuit(this.levelId, this.seated.length);
     }
 
     load(levelId) {
@@ -202,9 +212,15 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
         this.sim.go();
         this.startedAt = new Date().toISOString();
         this.events.push({ type: 'go' });
+        db.raceStarted(this.levelId, this.seated.length, this.crewVisitors);
         this.broadcastRoom();
       }
       if (racing) {
+        for (const e of ev) {
+          if (e.type !== 'ouch' && e.type !== 'fell') continue;
+          const cause = e.type === 'ouch' ? 'spike' : e.hole ? 'hole' : 'edge';
+          db.raftFell(this.levelId, this.seated.length, this.sim.snapshot().checkpoint, cause, this.crewVisitors);
+        }
         const fin = ev.find((e) => e.type === 'finish');
         if (fin) this.finish(fin.timeTicks);
       }
@@ -227,6 +243,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
         level: level.id, room: this.code, players, crewSize, timeMs, points, deaths,
         startedAt: this.startedAt || new Date().toISOString(), finishedAt: new Date().toISOString(),
       });
+      db.raceFinished(level.id, crewSize, this.crewVisitors);
       this.phase = 'results';
       this.lastResult = { level: level.id, levelName: level.name, players, crewSize, timeMs, points, deaths, ...saved };
       log(`room ${this.code} finished ${level.id} with ${crewSize} in ${timeMs} ms (${points} pts, rank ${saved.rank})`);
@@ -258,6 +275,7 @@ export function createRooms({ RAPIER, db, roomTtlMs = 30_000, seatGraceMs = 10_0
     }
 
     close() {
+      this.abandonRace();
       this.sim.free();
       rooms.delete(this.code);
       log(`room ${this.code} removed`);

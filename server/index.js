@@ -13,6 +13,7 @@ import { unlockedLevels } from '../src/sim/progress.js';
 import { cleanName } from './names.js';
 import { openDb } from './db.js';
 import { createRooms } from './rooms.js';
+import { describeDevice, openGeo, referrerSite } from './visitors.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
@@ -34,6 +35,7 @@ export async function startServer({
 } = {}) {
   await RAPIER.init();
   const db = openDb(dataDir);
+  const geo = await openGeo(log);
   const rooms = createRooms({ RAPIER, db, roomTtlMs, seatGraceMs, log });
   const root = resolve(staticDir);
   const compressed = new Map();
@@ -57,15 +59,29 @@ export async function startServer({
     return { onSite: Math.max(onSite, r.inRooms + r.single + solo), ...r, single: r.single + solo };
   }
   const BOTS = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|discord|curl|wget|python|node|go-http|axios|headless|lighthouse|monitor|scan/i;
-  function countVisit(req) {
-    const ua = String(req.headers['user-agent'] || '');
-    if (!ua || BOTS.test(ua)) return;
+  const isPerson = (ua) => ua && !BOTS.test(ua);
+  function clientIp(req) {
     // behind a local proxy (like Caddy for HTTPS) the real address is in x-forwarded-for
     const direct = req.socket.remoteAddress || '';
     const local = /^(::1|127\.|::ffff:127\.)/.test(direct);
-    const ip = local ? String(req.headers['x-forwarded-for'] || direct).split(',')[0].trim() : direct;
-    db.recordVisit(ip, ua);
+    return local ? String(req.headers['x-forwarded-for'] || direct).split(',')[0].trim() : direct;
   }
+  function countVisit(req) {
+    const ua = String(req.headers['user-agent'] || '');
+    if (isPerson(ua)) db.recordVisit(clientIp(req), ua);
+    trackVisitor(req, true);
+  }
+  // The row /stats shows for this person today. Only the place is kept from the address.
+  function trackVisitor(req, view = false) {
+    const ua = String(req.headers['user-agent'] || '');
+    if (!isPerson(ua)) return null;
+    const ip = clientIp(req);
+    const hash = db.hashVisitor(ip, ua);
+    db.seeVisitor(hash, () => ({ ...geo(ip), ...describeDevice(ua), referrer: referrerSite(req.headers.referer, req.headers.host) }), view);
+    return hash;
+  }
+  const purge = setInterval(db.purgeOldVisits, 6 * 3_600_000);
+  db.purgeOldVisits();
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -87,6 +103,9 @@ export async function startServer({
       if (url.pathname === '/api/ping' && req.method === 'POST') {
         const id = url.searchParams.get('id') || '';
         if (/^[a-z0-9]{6,24}$/.test(id) && (pings.size < 20_000 || pings.has(id))) {
+          const visitor = trackVisitor(req);
+          const since = pings.has(id) ? Date.now() - pings.get(id).at : Infinity;
+          if (visitor && since <= PING_ALIVE_MS) db.addVisitSeconds(visitor, since / 1000); // longer means the tab was hidden
           pings.set(id, { at: Date.now(), mode: url.searchParams.get('mode') === 'solo' ? 'solo' : 'other' });
           db.recordPeak(liveNow().onSite);
         }
@@ -94,9 +113,14 @@ export async function startServer({
         return res.end();
       }
       if (url.pathname === '/api/analytics') return json(res, { now: liveNow(), ...db.analytics(14) });
+      if (url.pathname === '/api/stats') {
+        const key = String(req.headers.authorization || '').replace(/^Bearer /, '');
+        if (!db.checkStatsKey(key)) return send(res, 401, 'wrong key');
+        return json(res, db.stats());
+      }
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/about.html')) countVisit(req);
       // static files from the Vite build, falling back to index.html
-      const pathname = url.pathname === '/analytics' ? '/analytics.html' : url.pathname;
+      const pathname = ['/analytics', '/stats', '/privacy'].includes(url.pathname) ? `${url.pathname}.html` : url.pathname;
       let file = normalize(join(root, decodeURIComponent(pathname)));
       if (file !== root && !file.startsWith(root + sep)) return send(res, 403, 'forbidden');
       const st = await stat(file).catch(() => null);
@@ -129,7 +153,8 @@ export async function startServer({
   });
 
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 2048 });
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    ws.visitor = trackVisitor(req);
     let room = null;
     let seat = null;
     let budget = 0;
@@ -139,8 +164,9 @@ export async function startServer({
 
     const reply = (msg) => ws.readyState === 1 && ws.send(JSON.stringify(msg));
     const fail = (code) => reply({ t: 'error', code });
-    const seated = (r, res) => {
+    const seated = (r, res, name) => {
       if (res.error) return fail(res.error);
+      if (name) db.visitorJoined(ws.visitor, name, r.isPrivate);
       room = r;
       seat = res.seat;
       reply({ t: 'welcome', code: r.code, seat, token: res.token });
@@ -175,12 +201,12 @@ export async function startServer({
           const isPrivate = msg.private === true; // single player: straight into the race
           const r = rooms.create({ isPrivate });
           const res = r.addPlayer(name, ws);
-          seated(r, res);
+          seated(r, res, name);
           if (isPrivate && !res.error) r.start(res.seat, typeof msg.level === 'string' ? msg.level : undefined);
           return;
         }
         const r = rooms.get(String(msg.code || '').trim());
-        return r ? seated(r, r.addPlayer(name, ws)) : fail('room-not-found');
+        return r ? seated(r, r.addPlayer(name, ws), name) : fail('room-not-found');
       }
 
       if (!room) return;
@@ -238,6 +264,7 @@ export async function startServer({
     async close() {
       clearInterval(loop);
       clearInterval(heartbeat);
+      clearInterval(purge);
       for (const ws of wss.clients) ws.terminate();
       wss.close();
       await new Promise((ok) => server.close(ok));
