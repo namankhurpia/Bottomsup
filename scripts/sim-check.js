@@ -128,6 +128,28 @@ for (const id of ['plank', 'rapids']) {
   check(-Math.sin(back) * walkToward(-1, back, 0, arcFor(0, [0])) < 0, 'from the starting spot at the back, left walks left on screen');
 }
 {
+  // a slice can bend back on itself on screen (a 2-player half does): tapping left and right
+  // must still reach all of it, at every raft angle, for every crew size and seat
+  let missed = 0, cases = 0;
+  for (const crew of [[0, 1], [0, 1, 2], [0, 1, 2, 3]]) for (const seat of crew) for (let deg = 0; deg < 360; deg += 15) {
+    const arc = arcFor(seat, crew);
+    const angle = (deg * Math.PI) / 180;
+    const mem = { side: 0, to: null };
+    let pos = arc.start, lo = pos, hi = pos;
+    for (const h of [1, 1, 1, -1, -1, -1, 1, 1, -1, -1]) {
+      walkToward(0, pos, angle, arc, mem); // let go between taps
+      for (let t = 0; t < 200; t++) {
+        pos = Math.max(arc.min, Math.min(arc.max, pos + walkToward(h, pos, angle, arc, mem) * WALK_SPEED * DT));
+        lo = Math.min(lo, pos);
+        hi = Math.max(hi, pos);
+      }
+    }
+    cases++;
+    if (hi - lo < arc.max - arc.min - 0.1) missed++;
+  }
+  check(missed === 0, `tapping left and right reaches your whole slice (${cases - missed}/${cases} raft angle + seat cases)`);
+}
+{
   // parked at the end of your slice, the raft spins: the key must not go dead if the other end
   // of the slice is further that way
   const arc = arcFor(2); // quarter: 197-253 degrees

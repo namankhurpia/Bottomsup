@@ -67,34 +67,52 @@ export function cleanCrew(crew) {
 // A lone player owns the whole rim, so there is no "side" to stop at: left always walks
 // clockwise and right counter-clockwise, whatever the raft does, and holding one goes round in
 // circles. They start at the back of the raft, where clockwise is left on screen.
-// `mem` (optional, one object per player, kept while the key is held) covers the awkward case:
-// parked at one end of your slice with the other end further that way. Otherwise the key would
-// do nothing there, so it commits to walking across for the rest of the press.
+// `mem` (optional, one object per player, kept between presses) covers the awkward cases. A slice
+// can bend back on itself on screen (a 2-player half does), so "as far right as you can go" may
+// sit in its middle with more of the slice beyond. Pressing again there walks on round the slice,
+// the way you last went. And parked at one end with the other end just as far that way or
+// further, the key walks across instead of doing nothing. Either way it commits for the rest of
+// the press, so every part of your slice can be reached.
 export function walkToward(h, pos, raftAngle, arc, mem) {
   if (mem && Math.sign(h) !== mem.side) {
     mem.side = Math.sign(h);
     mem.to = null;
+    mem.fresh = true;
   }
   if (!h || !arc) return 0;
   if (arc.full) return Math.max(-1, Math.min(1, h));
+  const fresh = !!(mem && mem.fresh);
+  if (mem) mem.fresh = false;
   const ease = (d) => Math.max(-1, Math.min(1, d / 0.3)) * Math.min(1, Math.abs(h)); // no jitter on a laggy line
+  const walk = (d) => {
+    const m = ease(d);
+    if (mem && m) mem.dir = Math.sign(m);
+    return m;
+  };
+  const across = (to) => {
+    mem.to = to;
+    return walk(to - pos);
+  };
   if (mem && mem.to !== null) {
-    if (Math.abs(mem.to - pos) > 0.03) return ease(mem.to - pos);
+    if (Math.abs(mem.to - pos) > 0.03) return walk(mem.to - pos);
     mem.to = null;
   }
   const goal = (h < 0 ? Math.PI : 0) - raftAngle; // that side of the screen, in raft-local angle
   const diff = Math.atan2(Math.sin(goal - pos), Math.cos(goal - pos));
-  if (Math.abs(diff) < 0.03) return 0;
-  if (!arc.full && ((diff > 0 && pos >= arc.max) || (diff < 0 && pos <= arc.min))) {
+  const atMax = pos >= arc.max - 0.03;
+  const atMin = pos <= arc.min + 0.03;
+  if (Math.abs(diff) < 0.03) {
+    if (!fresh || !mem || (atMax && atMin)) return 0;
+    const onward = mem.dir ? mem.dir > 0 : arc.max - pos >= pos - arc.min;
+    return across(onward && !atMax ? arc.max : !onward && !atMin ? arc.min : onward ? arc.min : arc.max);
+  }
+  if ((diff > 0 && pos >= arc.max) || (diff < 0 && pos <= arc.min)) {
     const other = diff > 0 ? arc.min : arc.max;
     const side = (p) => Math.sign(h) * Math.cos(p + raftAngle); // bigger = further that way
-    if (mem && side(other) > side(pos) + 0.05) {
-      mem.to = other;
-      return ease(other - pos);
-    }
+    if (mem && side(other) > side(pos) - 0.05) return across(other);
     return 0;
   }
-  return ease(diff);
+  return walk(diff);
 }
 
 // rim angle -> raft-local position
