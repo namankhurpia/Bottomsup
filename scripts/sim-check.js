@@ -75,29 +75,32 @@ for (const id of ['plank', 'rapids']) {
   const inside = (p) => L.water.some((r) => Math.abs(p.x - r.x) <= r.w / 2 && Math.abs(p.y - r.y) <= r.h / 2);
   check(L.checkpoints.every(inside) && inside(L.finish), `${id}: every checkpoint and the finish sit on safe water`);
 }
-// left / right walk left / right on screen at every raft angle, for every crew size and seat
+// left / right take you to the end of your slice that's that way on screen, at every raft angle,
+// for every crew size and seat: all the way there, without ever turning back
 {
-  let wrongWay = 0, stoppedEarly = 0, cases = 0;
+  let wrongEnd = 0, turned = 0, movedAtEnd = 0, cases = 0;
   const crews = [[0, 1], [0, 1, 2], [0, 1, 2, 3]]; // slices; a lone player's full circle is tested below
-  for (const crew of crews) for (const seat of crew) for (let deg = 0; deg < 360; deg += 15) for (const h of [-1, 1]) for (const f of [0.1, 0.5, 0.9]) {
+  for (const crew of crews) for (const seat of crew) for (let deg = 0; deg < 360; deg += 15) for (const h of [-1, 1]) for (const f of [0, 0.1, 0.5, 0.9, 1]) {
     const arc = arcFor(seat, crew);
     const angle = (deg * Math.PI) / 180;
-    let pos = arc.min + f * (arc.max - arc.min);
     const screenX = (p) => h * Math.cos(p + angle); // bigger = further towards the side we asked for
-    let last = screenX(pos);
+    const far = Math.abs(screenX(arc.max) - screenX(arc.min)) > 0.05 ? (screenX(arc.max) > screenX(arc.min) ? arc.max : arc.min) : h < 0 ? arc.min : arc.max;
+    const mem = { side: 0, to: null };
+    let pos = arc.min + f * (arc.max - arc.min), dir = 0;
+    const startedThere = Math.abs(pos - far) < 1e-6;
     for (let t = 0; t < 60 * 6; t++) {
-      pos += walkToward(h, pos, angle, arc) * WALK_SPEED * DT;
-      pos = Math.max(arc.min, Math.min(arc.max, pos));
-      if (screenX(pos) < last - 1e-6) wrongWay++; // not one tick the other way
-      last = screenX(pos);
+      const m = walkToward(h, pos, angle, arc, mem);
+      if (m && dir && Math.sign(m) !== dir) turned++;
+      if (m) dir = Math.sign(m);
+      if (m && startedThere) movedAtEnd++;
+      pos = Math.max(arc.min, Math.min(arc.max, pos + m * WALK_SPEED * DT));
     }
     cases++;
-    // ended at the far side of the screen, or at the end of the slice on the way there
-    const atEnd = pos <= arc.min + 1e-6 || pos >= arc.max - 1e-6;
-    if (!atEnd && last < 0.99) stoppedEarly++;
+    if (Math.abs(pos - far) > 1e-6) wrongEnd++;
   }
-  check(wrongWay === 0, `left/right never walk the wrong way on screen, not for one tick (${cases} raft angle + seat cases)`);
-  check(stoppedEarly === 0, 'left/right carry on until you reach that side of the raft or the end of your slice');
+  check(wrongEnd === 0, `holding left/right walks all the way to the end of your slice that's that way on screen (${cases} cases)`);
+  check(turned === 0, 'holding left/right never turns back');
+  check(movedAtEnd === 0, 'already at that end, the key does nothing');
 }
 {
   // a lone player goes round in full circles through the real sim, and the raft turning

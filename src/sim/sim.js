@@ -60,59 +60,32 @@ export function cleanCrew(crew) {
   return c.length ? c : [0];
 }
 
-// Left / right mean left / right on screen, whatever angle the raft is at: this steps round
-// the rim in whichever direction moves you towards that side of the screen right now, and stops
-// when you're as far that way as you can go (or at the end of your slice). h: -1 (left) .. 1
+// Left / right mean left / right on screen, whatever angle the raft is at: the key picks whichever
+// end of your slice is further that way on screen right now, walks you there and stops at that
+// end. It never turns back while held, even where the slice bends back on itself on screen (a
+// 2-player half does), and if you're already at that end it does nothing. h: -1 (left) .. 1
 // (right). The camera never rotates, so world +x is always screen right.
-// A lone player owns the whole rim, so there is no "side" to stop at: left always walks
-// clockwise and right counter-clockwise, whatever the raft does, and holding one goes round in
-// circles. They start at the back of the raft, where clockwise is left on screen.
-// `mem` (optional, one object per player, kept between presses) covers the awkward cases. A slice
-// can bend back on itself on screen (a 2-player half does), so "as far right as you can go" may
-// sit in its middle with more of the slice beyond. Pressing again there walks on round the slice,
-// the way you last went. And parked at one end with the other end just as far that way or
-// further, the key walks across instead of doing nothing. Either way it commits for the rest of
-// the press, so every part of your slice can be reached.
+// A lone player owns the whole rim, so there is no end to stop at: left always walks clockwise
+// and right counter-clockwise, whatever the raft does, and holding one goes round in circles.
+// They start at the back of the raft, where clockwise is left on screen.
+// `mem` (optional, one object per player) keeps the chosen end for the rest of the press, so the
+// raft turning under you doesn't change where you're going.
 export function walkToward(h, pos, raftAngle, arc, mem) {
   if (mem && Math.sign(h) !== mem.side) {
     mem.side = Math.sign(h);
     mem.to = null;
-    mem.fresh = true;
   }
   if (!h || !arc) return 0;
   if (arc.full) return Math.max(-1, Math.min(1, h));
-  const fresh = !!(mem && mem.fresh);
-  if (mem) mem.fresh = false;
-  const ease = (d) => Math.max(-1, Math.min(1, d / 0.3)) * Math.min(1, Math.abs(h)); // no jitter on a laggy line
-  const walk = (d) => {
-    const m = ease(d);
-    if (mem && m) mem.dir = Math.sign(m);
-    return m;
-  };
-  const across = (to) => {
-    mem.to = to;
-    return walk(to - pos);
-  };
-  if (mem && mem.to !== null) {
-    if (Math.abs(mem.to - pos) > 0.03) return walk(mem.to - pos);
-    mem.to = null;
-  }
-  const goal = (h < 0 ? Math.PI : 0) - raftAngle; // that side of the screen, in raft-local angle
-  const diff = Math.atan2(Math.sin(goal - pos), Math.cos(goal - pos));
-  const atMax = pos >= arc.max - 0.03;
-  const atMin = pos <= arc.min + 0.03;
-  if (Math.abs(diff) < 0.03) {
-    if (!fresh || !mem || (atMax && atMin)) return 0;
-    const onward = mem.dir ? mem.dir > 0 : arc.max - pos >= pos - arc.min;
-    return across(onward && !atMax ? arc.max : !onward && !atMin ? arc.min : onward ? arc.min : arc.max);
-  }
-  if ((diff > 0 && pos >= arc.max) || (diff < 0 && pos <= arc.min)) {
-    const other = diff > 0 ? arc.min : arc.max;
+  let to = mem ? mem.to : null;
+  if (to === null) {
     const side = (p) => Math.sign(h) * Math.cos(p + raftAngle); // bigger = further that way
-    if (mem && side(other) > side(pos) - 0.05) return across(other);
-    return 0;
+    const gap = side(arc.max) - side(arc.min);
+    // both ends equally far that way: like a lone player, left goes clockwise and right counter-clockwise
+    to = Math.abs(gap) > 0.05 ? (gap > 0 ? arc.max : arc.min) : h < 0 ? arc.min : arc.max;
+    if (mem) mem.to = to;
   }
-  return walk(diff);
+  return Math.abs(to - pos) > 1e-6 ? Math.sign(to - pos) * Math.min(1, Math.abs(h)) : 0;
 }
 
 // rim angle -> raft-local position
